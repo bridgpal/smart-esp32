@@ -1,28 +1,19 @@
-// One-call voice reply: the recording goes in as audio, the spoken answer streams back as audio
-// plus a text transcript of the answer. Replaces transcribe -> LLM -> TTS with a single request.
-// Uses OPENAI_TTS_API_KEY directly (the AI Gateway doesn't serve OpenAI's audio chat models).
+// One-call voice reply (`/api/device/talk-audio`): the recording goes in as audio, the spoken answer
+// streams back as audio plus a text transcript of the answer.
 import OpenAI from "openai";
 
 import { DEVICE_RATE, OPENAI_TTS_RATE, StreamingResampler, pcmToWav } from "./audio.ts";
-import { SYSTEM } from "./claude-reply.ts";
-import { SpeechError } from "./openai-speech.ts";
+import { openai } from "./openai.ts";
 
 // Tried in order until one is accepted; OPENAI_AUDIO_MODEL (if set) goes first.
 const CANDIDATE_MODELS = ["gpt-audio-mini", "gpt-audio", "gpt-4o-mini-audio-preview", "gpt-4o-audio-preview"];
 
-const AUDIO_SYSTEM = `${SYSTEM}
-The user's question arrives as audio. Answer it out loud, in English unless they clearly spoke
-another language. If the audio has no clear speech (silence, noise, or a fragment), do not guess a
-question: say only "Sorry, I didn't catch that."`;
-
-let client: OpenAI | null = null;
-function openai(): OpenAI {
-  const apiKey = Netlify.env.get("OPENAI_TTS_API_KEY");
-  if (!apiKey) throw new SpeechError("OPENAI_TTS_API_KEY is not set on this site", 500, "");
-  // baseURL is explicit: the AI Gateway injects OPENAI_BASE_URL, which would send this key to it.
-  client ??= new OpenAI({ apiKey, baseURL: "https://api.openai.com/v1" });
-  return client;
-}
+const INSTRUCTIONS = `You are the voice of a small smart speaker on someone's desk. The user's
+question arrives as audio, and your answer is played aloud, so every extra word adds waiting time.
+Answer in 25 words or fewer: usually one short sentence, at most two. Give the single most useful
+fact or answer, not an overview; if they want more, they will ask. Use plain spoken language.
+Answer in English unless they clearly spoke another language. If the audio has no clear speech
+(silence, noise, or a fragment), do not guess a question: say only "Sorry, I didn't catch that."`;
 
 function isModelRejection(e: unknown): boolean {
   if (!(e instanceof OpenAI.APIError)) return false;
@@ -52,7 +43,7 @@ export async function audioReply(pcm16k: Uint8Array, handlers: AudioReplyHandler
         audio: { voice, format: "pcm16" }, // 24 kHz s16le mono
         stream: true,
         messages: [
-          { role: "system", content: AUDIO_SYSTEM },
+          { role: "system", content: INSTRUCTIONS },
           { role: "user", content: [{ type: "input_audio", input_audio: { data: wavB64, format: "wav" } }] },
         ],
       });

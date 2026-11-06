@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>smart-esp32</title>
-<meta name="description" content="A desk voice assistant: an ESP32-S3 speaker board that answers questions through a Netlify Function, Claude and OpenAI speech.">
+<meta name="description" content="A desk voice assistant: an ESP32-S3 speaker board that answers questions out loud through a Netlify Function and an OpenAI audio model.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=Martian+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -110,7 +110,7 @@
   .sub { color: var(--muted); margin: 0 0 32px; max-width: 40em; }
 
   /* Round trip: a real sequence, so time stamps carry order */
-  .trip { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; }
+  .trip { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
   .trip li { position: relative; padding: 22px 18px 0 0; border-top: 3px solid var(--rule); }
   .trip li::before {
     content: ""; position: absolute; top: -8px; left: 0;
@@ -175,8 +175,9 @@
       <h1>Press a button, ask a question, let go.</h1>
       <p class="lede">
         A $25 speaker board on a desk that answers out loud. The board only records and plays
-        audio. <strong>A Netlify Function does the rest:</strong> it transcribes your question,
-        asks Claude for a short answer, and streams the spoken reply back as it's generated.
+        audio. <strong>A Netlify Function does the rest:</strong> it hands your recording to an
+        OpenAI audio model that hears the question and answers out loud, and streams the reply back
+        as it's generated.
       </p>
       <div class="actions">
         <a class="button primary" href="https://github.com/bridgpal/smart-esp32">Source on GitHub</a>
@@ -198,22 +199,17 @@
         <li style="--dot: var(--led-think)">
           <span class="t">0.0 s</span> <span class="who">Board → Netlify</span>
           <h3>Upload</h3>
-          <p>Posts the recording to <code>/api/device/talk-stream</code>. The ring turns blue.</p>
+          <p>Posts the recording to <code>/api/device/talk-audio</code>. The ring turns blue.</p>
         </li>
         <li style="--dot: var(--led-think)">
-          <span class="t">≈ 2.0 s</span> <span class="who">Netlify</span>
-          <h3>Transcribe</h3>
-          <p>OpenAI speech-to-text. The transcript streams back to the board's console first.</p>
-        </li>
-        <li style="--dot: var(--led-think)">
-          <span class="t">≈ 3.8 s</span> <span class="who">Netlify</span>
-          <h3>Answer</h3>
-          <p>Claude, through the Netlify AI Gateway, writes one or two short sentences, streamed sentence by sentence.</p>
+          <span class="t">≈ 1 s</span> <span class="who">Netlify → OpenAI</span>
+          <h3>Hear and answer</h3>
+          <p>One call to an OpenAI audio model: the recording goes in, a short spoken answer starts streaming out.</p>
         </li>
         <li style="--dot: var(--led-speak)">
-          <span class="t">≈ 5.0 s</span> <span class="who">Netlify → Board</span>
+          <span class="t">≈ 3 s</span> <span class="who">Netlify → Board</span>
           <h3>Speak</h3>
-          <p>Each sentence becomes speech, is resampled to 16 kHz and plays while the rest is still arriving. The ring turns green.</p>
+          <p>Audio is resampled to 16 kHz and plays while the rest is still arriving. The ring turns green.</p>
         </li>
       </ol>
     </div>
@@ -244,8 +240,7 @@
           <ul>
             <li><strong>Functions</strong> are the device's whole backend, routed at <code>/api/device/*</code>.</li>
             <li><strong>Streaming responses</strong> send reply audio out sentence by sentence instead of all at once.</li>
-            <li><strong>AI Gateway</strong> supplies Claude credentials at runtime, so no Anthropic key is stored anywhere.</li>
-            <li><strong>Environment variables</strong> hold the device token and the OpenAI speech key as secrets.</li>
+            <li><strong>Environment variables</strong> hold the device token and the OpenAI API key as secrets.</li>
             <li><strong>Git deploys</strong> from <code>main</code>, skipping the build when only firmware changes.</li>
           </ul>
         </div>
@@ -264,8 +259,7 @@
             <tr><td><code><span class="method">GET</span> /api/device/ping</code></td><td>nothing</td><td>server time, deploy ID, and which AI services are configured</td></tr>
             <tr><td><code><span class="method">POST</span> /api/device/event</code></td><td>a button press</td><td>a color for the LED ring</td></tr>
             <tr><td><code><span class="method">POST</span> /api/device/say</code></td><td>text</td><td>that text as speech</td></tr>
-            <tr><td><code><span class="method">POST</span> /api/device/talk</code></td><td>a recording</td><td>the spoken reply, all at once</td></tr>
-            <tr><td><code><span class="method">POST</span> /api/device/talk-stream</code></td><td>a recording</td><td>transcript, reply text and audio, streamed as frames</td></tr>
+            <tr><td><code><span class="method">POST</span> /api/device/talk-audio</code></td><td>a recording</td><td>the spoken reply and its text, streamed as frames</td></tr>
           </tbody>
         </table>
       </div>

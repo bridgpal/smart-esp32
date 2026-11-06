@@ -261,7 +261,7 @@ void cmdPlayback() {
 void cmdTalk(String rest) {
   String a = nextToken(rest);
   float secs = a.length() ? a.toFloat() : 4;
-  String path = nextToken(rest); // optional route override, e.g. /api/device/talk-stream
+  String path = nextToken(rest); // optional route override, e.g. a test route
   uint32_t until = millis() + (uint32_t)(secs * 1000);
   voice::talk([until] { return (int32_t)(millis() - until) < 0; }, nullptr, path.length() ? path.c_str() : nullptr)
       ? ok()

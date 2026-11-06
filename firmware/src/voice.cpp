@@ -8,7 +8,7 @@
 namespace voice {
 
 namespace {
-// Parses the talk-stream / talk-audio frames ([type][u32 LE length][payload]) as they arrive and
+// Parses the talk-audio frames ([type][u32 LE length][payload]) as they arrive and
 // plays audio frames immediately, after a short prebuffer to ride out network jitter.
 class FramePlayer : public Stream {
 public:

@@ -6,9 +6,10 @@
 a rebrand of the [Waveshare ESP32-S3-AUDIO-Board](https://www.waveshare.com/wiki/ESP32-S3-AUDIO-Board).
 
 **TL;DR:** a desk voice assistant built from a $25 ESP32-S3 speaker board and a Netlify site.
-Hold K3, ask a question, let go. The board uploads your voice to a Netlify Function, which
-transcribes it, asks Claude for a short answer, turns the answer into speech, and streams the
-audio back so the board starts talking about 5 seconds after you let go.
+Hold the rightmost button (K1), ask a question, let go. The board uploads your voice to a
+Netlify Function, which hands it to an OpenAI audio model that hears the question and answers out
+loud in one call. The answer streams back as it's generated, so the board starts talking about
+3 seconds after you let go.
 
 The repo has two halves:
 
@@ -19,31 +20,26 @@ The repo has two halves:
 
 ## How it works
 
+Each question is a single OpenAI call, through `/api/device/talk-audio`:
+
 ```mermaid
 sequenceDiagram
     participant U as You
     participant B as Board (firmware/)
     participant N as Netlify Function (site/)
-    participant O as OpenAI speech
-    participant C as Claude (Netlify AI Gateway)
+    participant O as OpenAI audio model
 
-    U->>B: hold K3 and speak (ring red)
-    B->>N: POST /api/device/talk-stream, 16 kHz PCM (ring blue)
-    N->>O: transcribe
-    O-->>N: "What is Netlify?"
-    N-->>B: T frame: transcript
-    N->>C: question (streamed reply)
-    C-->>N: first sentence
-    N-->>B: R frame: sentence text
-    N->>O: text to speech, per sentence (streamed)
-    O-->>N: 24 kHz audio, resampled to 16 kHz
-    N-->>B: A frames: audio as it's generated
+    U->>B: hold K1 and speak (ring red)
+    B->>N: POST /api/device/talk-audio, 16 kHz PCM (ring blue)
+    N->>O: recording in, "answer out loud"
+    O-->>N: spoken answer (24 kHz) + its text, streamed
+    N-->>B: A frames: audio resampled to 16 kHz, R frames: reply text
     B->>U: speaks while the rest streams in (ring green)
 ```
 
-Measured on this setup: the transcript reaches the board about 2 s after you let go, the first
-reply sentence about 1.7 s later, and the speaker starts about 5 s after release. The old
-non-streaming route (`/api/device/talk`) waits for the whole answer and is kept for comparison.
+Measured: the first audio leaves Netlify 1.0 to 1.6 s after the recording arrives, and the board
+starts speaking 2.3 to 3.5 s after you let go. An earlier three-step version (transcribe, then a
+text model, then text to speech) took about 5 s and was removed.
 
 ## Netlify site (`site/`)
 
@@ -54,10 +50,8 @@ The board has no API keys and no AI code. Everything smart happens in one Netlif
 **Netlify features in use**
 
 - **Functions** as the device backend: modern `export default` handlers with `config.path` routing.
-- **Streaming responses**: `talk-stream` returns a `ReadableStream`, so audio leaves Netlify sentence
-  by sentence instead of after the full reply is ready.
-- **AI Gateway**: Claude is called with the Anthropic SDK and no key in the repo or site settings.
-  The gateway injects the credentials at runtime.
+- **Streaming responses**: `talk-audio` returns a `ReadableStream`, so audio leaves Netlify as it's
+  generated instead of after the full reply is ready.
 - **Environment variables** (secret, functions scope) for the device token and the OpenAI key.
 - **Git deploys from `main`** via the root [`netlify.toml`](netlify.toml) (`base = "site"`). An
   `ignore` rule skips the build when a commit only touches firmware.
@@ -70,18 +64,18 @@ The board has no API keys and no AI code. Everything smart happens in one Netlif
 | `GET /api/device/ping` | | `{ ok, deviceId, serverTime, deployId, clientIp, ai }` |
 | `POST /api/device/event` | `{ type, key }` | `{ ok, received, led: [r,g,b] }` (button press demo) |
 | `POST /api/device/say` | `{ text, voice? }` | spoken audio |
-| `POST /api/device/talk` | recorded speech | spoken reply, plus `X-Transcript` / `X-Reply` headers |
-| `POST /api/device/talk-stream` | recorded speech | framed stream, see below |
+| `POST /api/device/talk-audio` | recorded speech | framed stream, see below |
 
-`talk-stream` frames are `[1-byte type][4-byte little-endian length][payload]`:
-`T` transcript, `R` reply sentence, `A` audio chunk, `E` error, `Z` end.
+`talk-audio` sends frames of `[1-byte type][4-byte little-endian length][payload]`:
+`R` reply text, `A` audio chunk, `M` model name, `E` error, `Z` end.
 
 **Pipeline pieces** in [`site/lib/`](site/lib)
 
 | File | Does |
 |---|---|
-| `openai-speech.ts` | speech to text (`gpt-4o-mini-transcribe`) and text to speech (`gpt-4o-mini-tts`), batch and streaming |
-| `claude-reply.ts` | the reply: Claude Opus 5.5 at low effort, prompted for 25 words or fewer, streamed one sentence at a time, capped at 2 sentences / 40 words |
+| `openai-audio.ts` | the one-call route: recording in, spoken answer out (`gpt-audio-mini`, with fallbacks), streamed |
+| `openai-speech.ts` | text to speech for `say` (`gpt-4o-mini-tts`) |
+| `openai.ts` | the shared OpenAI client, using the site's key |
 | `audio.ts` | WAV wrapping and a windowed-sinc resampler (24 kHz to 16 kHz), batch and streaming |
 
 **Site environment variables**
@@ -89,11 +83,11 @@ The board has no API keys and no AI code. Everything smart happens in one Netlif
 | Variable | Needed | Notes |
 |---|---|---|
 | `DEVICE_TOKEN` | yes | must match `DEVICE_TOKEN` in your local `.env` |
-| `OPENAI_TTS_API_KEY` | yes | used for both transcription and speech |
-| `CLAUDE_MODEL`, `OPENAI_STT_MODEL`, `OPENAI_TTS_MODEL` | no | override the defaults above |
+| `OPENAI_TTS_API_KEY` | yes | a full OpenAI API key, used for every OpenAI call |
+| `OPENAI_AUDIO_MODEL`, `OPENAI_TTS_MODEL` | no | override the defaults above |
 
-Anthropic credentials come from the AI Gateway, which needs at least one production deploy
-before it activates. `GET /api/device/ping` reports `ai.claudeGateway` and `ai.openaiSpeech`.
+`GET /api/device/ping` reports `openai: true` when the key is set. The client always calls
+`https://api.openai.com/v1` directly, even if Netlify's AI Gateway injects `OPENAI_BASE_URL`.
 
 **Working on the site:** `cd site && npm install && npm run typecheck`. There is no local dev
 server in this workflow: push to `main` and test against production, or open a branch and test
@@ -103,9 +97,11 @@ its deploy preview.
 
 **What it does today**
 
-- Hold-to-talk on K3, with the streaming voice round trip above. Pressing K3 while it's answering
-  interrupts the reply and starts listening again.
-- K1, K2 and BOOT post an event to Netlify; the ring lights in the color the function returns.
+- Hold-to-talk on K1 (the rightmost button), with the streaming voice round trip above. Pressing
+  K1 while it's answering interrupts the reply and starts listening again.
+- K2, K3 and BOOT post an event to Netlify; the ring lights in the color the function returns.
+- An in-memory event log (`make cmd C=log`) of button changes and talk outcomes, readable after the
+  fact even if nothing was watching the serial port at the time.
 - A serial console for driving and testing everything from a terminal (`make cmd`).
 - Wi-Fi, HTTPS with the built-in CA bundle, config stored in flash (NVS).
 
@@ -116,6 +112,7 @@ its deploy preview.
 ```
 include/board.h   pin map (the single source of truth for pins)
 src/main.cpp      setup, button handling
+src/diag.*        in-memory event log behind the `log` command
 src/voice.*       push-to-talk: record, stream the reply, play it
 src/audio.*       I2S at 16 kHz, ES8311 speaker codec, ES7210 mic ADC, tone/record/play
 src/net.*         Wi-Fi, NVS config, HTTPS JSON, binary and streaming requests
@@ -151,6 +148,7 @@ If upload can't connect: hold BOOT, tap RESET, release BOOT, then `make flash` a
 | `rec [seconds]`, `playback` | record from the mics and print levels, play it back |
 | `say <text>` | speak text through Netlify TTS |
 | `talk [seconds]` | full voice round trip without pressing a button |
+| `log` | the in-memory event log |
 | `ping`, `event <type> [key]`, `get <url>` | API checks |
 | `wifi`, `wifi scan`, `config show / set / clear`, `amp on/off`, `reboot` | setup and debugging |
 
@@ -176,16 +174,16 @@ checks on this unit.
    `DEVICE_TOKEN`. `.env` is gitignored, and the firmware build reads it through `load_env.py`.
    Values set on the device with `config set` override it.
 2. **Netlify:** create a site linked to this repo (the root `netlify.toml` handles build settings),
-   then set `DEVICE_TOKEN` and `OPENAI_TTS_API_KEY` on it. Deploy `main` once so the AI Gateway
-   activates.
+   then set `DEVICE_TOKEN` and `OPENAI_TTS_API_KEY` (a full OpenAI API key) on it.
 3. **Board:** `cd firmware && make setup && make flash`, then `make cmd C="wifi ping"`.
-4. **Talk:** hold K3 (leftmost of the three keys), ask something, let go.
+4. **Talk:** hold K1 (the rightmost button), ask something, let go.
 
 ## Known limits and next steps
 
-- A K3 press during the thinking phase (ring blue) isn't seen yet; it only interrupts once reply
+- A K1 press during the thinking phase (ring blue) isn't seen yet; it only interrupts once reply
   audio is streaming.
 - The board records only the left mic; the right one measured slightly louder.
 - Battery level isn't readable: no battery-sense pin has been identified.
 - Next: stream the mic audio while you talk (WebSockets / a long-running server) to cut the
-  ~2 s upload and transcription wait, and OTA firmware updates hosted on Netlify.
+  upload wait, or OpenAI's Realtime API for true speech-to-speech; OTA firmware updates hosted on
+  Netlify.

@@ -1,4 +1,4 @@
-// Push-to-talk: record -> POST /api/device/talk -> play the spoken reply.
+// Push-to-talk: record -> POST to the talk route (default /api/device/talk-audio) -> play the reply.
 #pragma once
 #include <Arduino.h>
 #include <functional>
