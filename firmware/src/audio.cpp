@@ -122,6 +122,51 @@ void playPcm16(const uint8_t *data, size_t bytes) {
   ampOff();
 }
 
+namespace {
+bool s_playing = false;
+bool s_hasCarry = false;
+uint8_t s_carry = 0;
+} // namespace
+
+void beginPlayback() {
+  if (!s_ok || s_playing) return;
+  s_playing = true;
+  s_hasCarry = false;
+  ampOn();
+}
+
+void writePcm(const uint8_t *data, size_t bytes) {
+  if (!s_playing || !bytes) return;
+  if (s_hasCarry) {
+    uint8_t pair[2] = {s_carry, data[0]};
+    int16_t sample;
+    memcpy(&sample, pair, 2);
+    writeMono(&sample, 1);
+    data++;
+    bytes--;
+    s_hasCarry = false;
+  }
+  size_t whole = bytes & ~(size_t)1;
+  // data may be unaligned (it points into an HTTP buffer), so copy through an aligned scratch.
+  int16_t scratch[FRAMES];
+  for (size_t off = 0; off < whole;) {
+    size_t n = min(whole - off, sizeof(scratch));
+    memcpy(scratch, data + off, n);
+    writeMono(scratch, n / 2);
+    off += n;
+  }
+  if (bytes & 1) {
+    s_carry = data[bytes - 1];
+    s_hasCarry = true;
+  }
+}
+
+void endPlayback() {
+  if (!s_playing) return;
+  s_playing = false;
+  ampOff();
+}
+
 size_t record(uint8_t *buf, size_t maxBytes, const std::function<bool()> &keepGoing, float *rmsLeft,
               float *rmsRight) {
   if (!s_ok) return 0;

@@ -235,6 +235,44 @@ Binary apiBinary(const char *method, const String &path, const uint8_t *body, si
   return out;
 }
 
+Response apiStream(const char *method, const String &path, const uint8_t *body, size_t bodyLen,
+                   const char *contentType, Stream &sink) {
+  Response res;
+  if (!s_cfg.apiBase.length()) {
+    res.error = "api.base not set";
+    return res;
+  }
+  if (!connected()) {
+    res.error = "wifi not connected";
+    return res;
+  }
+  NetworkClientSecure client;
+  client.useBuiltinCACertBundle();
+  HTTPClient http;
+  http.setTimeout(20000);
+  http.setConnectTimeout(10000);
+  if (!http.begin(client, s_cfg.apiBase + path)) {
+    res.error = "bad url";
+    return res;
+  }
+  http.setUserAgent("smart-esp32/" FW_VERSION);
+  http.addHeader("X-Device-Id", deviceId());
+  http.addHeader("Authorization", "Bearer " + s_cfg.apiToken);
+  if (bodyLen) http.addHeader("Content-Type", contentType);
+
+  res.status = http.sendRequest(method, (uint8_t *)body, bodyLen);
+  if (res.status <= 0) {
+    res.error = HTTPClient::errorToString(res.status);
+  } else if (res.status != 200) {
+    res.body = http.getString();
+  } else {
+    int written = http.writeToStream(&sink);
+    if (written < 0) res.error = HTTPClient::errorToString(written);
+  }
+  http.end();
+  return res;
+}
+
 Response api(const char *method, const String &path, const String &jsonBody) {
   if (!s_cfg.apiBase.length()) {
     Response res;

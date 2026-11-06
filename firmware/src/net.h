@@ -48,4 +48,9 @@ struct Binary {
 Binary apiBinary(const char *method, const String &path, const uint8_t *body, size_t bodyLen,
                  const char *contentType, size_t maxBytes);
 
+// Streams the response body into sink as it arrives (chunked encoding decoded). On a non-200
+// status the body is returned in res.body instead.
+Response apiStream(const char *method, const String &path, const uint8_t *body, size_t bodyLen,
+                   const char *contentType, Stream &sink);
+
 } // namespace net
