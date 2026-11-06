@@ -6,7 +6,7 @@
 a rebrand of the [Waveshare ESP32-S3-AUDIO-Board](https://www.waveshare.com/wiki/ESP32-S3-AUDIO-Board).
 
 **TL;DR:** a desk voice assistant built from a $25 ESP32-S3 speaker board and a Netlify site.
-Hold K2, ask a question, let go. The board uploads your voice to a Netlify Function, which
+Hold K3, ask a question, let go. The board uploads your voice to a Netlify Function, which
 transcribes it, asks Claude for a short answer, turns the answer into speech, and streams the
 audio back so the board starts talking about 5 seconds after you let go.
 
@@ -27,7 +27,7 @@ sequenceDiagram
     participant O as OpenAI speech
     participant C as Claude (Netlify AI Gateway)
 
-    U->>B: hold K2 and speak (ring red)
+    U->>B: hold K3 and speak (ring red)
     B->>N: POST /api/device/talk-stream, 16 kHz PCM (ring blue)
     N->>O: transcribe
     O-->>N: "What is Netlify?"
@@ -103,9 +103,9 @@ its deploy preview.
 
 **What it does today**
 
-- Hold-to-talk on K2, with the streaming voice round trip above. Pressing K2 while it's answering
+- Hold-to-talk on K3, with the streaming voice round trip above. Pressing K3 while it's answering
   interrupts the reply and starts listening again.
-- K1, K3 and BOOT post an event to Netlify; the ring lights in the color the function returns.
+- K1, K2 and BOOT post an event to Netlify; the ring lights in the color the function returns.
 - A serial console for driving and testing everything from a terminal (`make cmd`).
 - Wi-Fi, HTTPS with the built-in CA bundle, config stored in flash (NVS).
 
@@ -179,11 +179,11 @@ checks on this unit.
    then set `DEVICE_TOKEN` and `OPENAI_TTS_API_KEY` on it. Deploy `main` once so the AI Gateway
    activates.
 3. **Board:** `cd firmware && make setup && make flash`, then `make cmd C="wifi ping"`.
-4. **Talk:** hold K2, ask something, let go.
+4. **Talk:** hold K3 (leftmost of the three keys), ask something, let go.
 
 ## Known limits and next steps
 
-- A K2 press during the thinking phase (ring blue) isn't seen yet; it only interrupts once reply
+- A K3 press during the thinking phase (ring blue) isn't seen yet; it only interrupts once reply
   audio is streaming.
 - The board records only the left mic; the right one measured slightly louder.
 - Battery level isn't readable: no battery-sense pin has been identified.

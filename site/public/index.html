@@ -90,17 +90,6 @@
   .eyebrow { font-family: var(--mono); font-size: 13px; color: var(--muted); margin: 0 0 14px; }
   h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -0.02em; margin: 0; }
   h1 { font-size: clamp(40px, 6vw, 66px); line-height: 1.02; font-variation-settings: "opsz" 96; }
-  h1 .key {
-    display: inline-block;
-    font-family: var(--mono);
-    font-weight: 500;
-    font-size: 0.62em;
-    padding: 0.08em 0.38em;
-    border: 2px solid var(--ink);
-    border-bottom-width: 5px;
-    border-radius: 10px;
-    vertical-align: 0.12em;
-  }
   .lede { font-size: 19px; color: var(--muted); max-width: 34em; margin: 22px 0 28px; }
   .lede strong { color: var(--ink); font-weight: 600; }
   .actions { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -183,7 +172,7 @@
 
     <div>
       <p class="eyebrow">smart-esp32 · ESP32-S3 + Netlify</p>
-      <h1>Hold <span class="key">K2</span>, ask a question, let go.</h1>
+      <h1>Press a button, ask a question, let go.</h1>
       <p class="lede">
         A $25 speaker board on a desk that answers out loud. The board only records and plays
         audio. <strong>A Netlify Function does the rest:</strong> it transcribes your question,
@@ -204,7 +193,7 @@
         <li style="--dot: var(--led-listen)">
           <span class="t">while held</span> <span class="who">Board</span>
           <h3>Listening</h3>
-          <p>Records 16 kHz audio from the mic array while K2 is held. The ring turns red.</p>
+          <p>Records 16 kHz audio from the mic array while you hold the talk button. The ring turns red.</p>
         </li>
         <li style="--dot: var(--led-think)">
           <span class="t">0.0 s</span> <span class="who">Board → Netlify</span>
@@ -245,7 +234,7 @@
           <ul>
             <li>ESP32-S3, 16 MB flash, 8 MB PSRAM, Wi-Fi</li>
             <li>ES7210 dual-mic input, ES8311 codec and speaker amp</li>
-            <li>Seven-LED ring and three buttons: K2 talks, and interrupts a reply</li>
+            <li>Seven-LED ring and three buttons: hold one to talk, press it again to interrupt a reply</li>
             <li>Plays streamed audio after a 250 ms buffer</li>
           </ul>
         </div>
@@ -293,16 +282,16 @@
 </footer>
 
 <script>
-  // The LED ring on the real board: red while you hold K2, blue while Netlify works, green while it speaks.
+  // The LED ring on the real board: red while you hold the button, blue while Netlify works, green while it speaks.
   (function () {
     var device = document.getElementById("device");
     var state = document.getElementById("state");
     if (!device || !state) return;
     var phases = [
-      { color: "--led-listen", label: "<b>listening</b> · K2 held", ms: 2600 },
+      { color: "--led-listen", label: "<b>listening</b> · button held", ms: 2600 },
       { color: "--led-think", label: "<b>thinking</b> · Netlify is answering", ms: 2400 },
       { color: "--led-speak", label: "<b>speaking</b> · about 5 s after you let go", ms: 3800 },
-      { color: null, label: "idle · hold K2 to ask", ms: 1400 }
+      { color: null, label: "idle · hold the button to ask", ms: 1400 }
     ];
     function show(p) {
       device.style.setProperty("--glow", p.color ? "var(" + p.color + ")" : "transparent");

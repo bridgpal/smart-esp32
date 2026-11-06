@@ -45,4 +45,4 @@
 #define EXIO_PA_EN 8   // speaker power amp enable, active high
 #define EXIO_KEY_9 9   // K1 (volume up in factory firmware), active low
 #define EXIO_KEY_10 10 // K2 (play/pause), active low
-#define EXIO_KEY_11 11 // K3 (volume down), active low
+#define EXIO_KEY_11 11 // K3 (volume down), active low; this firmware: hold to talk
