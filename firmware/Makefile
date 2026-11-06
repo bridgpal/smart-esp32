@@ -1,7 +1,6 @@
 VENV := .venv
 PIO := $(VENV)/bin/pio
 PY := $(VENV)/bin/python
-FW := firmware
 PORT ?= $(firstword $(wildcard /dev/cu.usbmodem*) $(wildcard /dev/ttyACM*))
 
 .PHONY: setup build flash monitor run test cmd listen erase wipe chip clean ports
@@ -12,18 +11,18 @@ setup:              ## create .venv with PlatformIO + esptool
 	$(VENV)/bin/pip install -q -r requirements.txt
 
 build:              ## compile firmware
-	$(PIO) run -d $(FW)
+	$(PIO) run
 
 flash:              ## compile + upload over USB
-	$(PIO) run -d $(FW) -t upload --upload-port $(PORT)
+	$(PIO) run -t upload --upload-port $(PORT)
 
 monitor:            ## interactive serial monitor (Ctrl+C to quit)
-	$(PIO) device monitor -d $(FW) -p $(PORT)
+	$(PIO) device monitor -p $(PORT)
 
 run: flash monitor  ## flash then monitor
 
 test:               ## on-device Unity tests (flashes a test image; run `make flash` after)
-	$(PIO) test -d $(FW) --upload-port $(PORT) --test-port $(PORT)
+	$(PIO) test --upload-port $(PORT) --test-port $(PORT)
 
 cmd:                ## send console commands: make cmd C="info"  or  C="'led 0 40 0' scan"
 	$(PY) scripts/devcmd.py --port $(PORT) $(C)
@@ -44,4 +43,4 @@ ports:
 	@echo $(or $(PORT),no board found)
 
 clean:
-	$(PIO) run -d $(FW) -t clean
+	$(PIO) run -t clean

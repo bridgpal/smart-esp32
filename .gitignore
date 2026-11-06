@@ -1,8 +1,15 @@
-.venv/
-firmware/.pio/
-firmware/include/secrets.h
-node_modules/
-.netlify/
+# secrets (repo-root .env is shared by firmware/ and site/)
 .env
+.env.*
+!.env.example
+
+# firmware
+firmware/.venv/
+firmware/.pio/
+
+# site
+site/node_modules/
+site/.netlify/
+
 .DS_Store
 .vscode/

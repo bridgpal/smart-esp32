@@ -6,11 +6,8 @@
 #include <WiFi.h>
 #include <esp_mac.h>
 
-// Optional compile-time defaults. Copy include/secrets.example.h -> include/secrets.h.
-// Values saved with `config set` (NVS) win over these.
-#if __has_include("secrets.h")
-#include "secrets.h"
-#endif
+// Compile-time defaults come from the repo-root .env via load_env.py (never committed).
+// Values saved on the device with `config set` (NVS) win over these.
 #ifndef WIFI_SSID
 #define WIFI_SSID ""
 #endif

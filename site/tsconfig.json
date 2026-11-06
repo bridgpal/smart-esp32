@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["cloud/functions/**/*"]
+  "include": ["netlify/functions/**/*"]
 }
