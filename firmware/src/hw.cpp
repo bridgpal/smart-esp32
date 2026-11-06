@@ -118,6 +118,11 @@ uint8_t pollKeyPresses() {
   return newlyPressed;
 }
 
+void resyncKeys() {
+  s_lastRaw = s_stable = readKeys();
+  s_lastChange = millis();
+}
+
 void setAll(uint8_t r, uint8_t g, uint8_t b) {
   ring.fill(ring.Color(r, g, b));
   ring.show();

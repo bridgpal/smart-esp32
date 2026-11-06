@@ -68,9 +68,13 @@ void loop() {
   uint8_t pressed = hw::pollKeyPresses();
   for (uint8_t k = 0; k < hw::KEY_COUNT; k++) {
     if (!(pressed & (1 << k))) continue;
-    if (k == hw::KEY_10) { // K2: hold to talk
+    if (k == hw::KEY_10) { // K2: hold to talk; pressing it during a reply interrupts and listens again
       Serial.println("EVT key K2 (talk)");
-      voice::talk([] { return (hw::readKeys() >> hw::KEY_10) & 1; });
+      auto k2Down = [] { return (bool)((hw::readKeys() >> hw::KEY_10) & 1); };
+      while (!voice::talk(k2Down, k2Down) && voice::interrupted() && k2Down()) {
+        Serial.println("EVT key K2 (talk again)");
+      }
+      hw::resyncKeys();
     } else {
       onKeyPress(k);
     }

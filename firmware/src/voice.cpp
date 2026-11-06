@@ -11,10 +11,20 @@ namespace {
 // plays audio frames immediately, after a short prebuffer to ride out network jitter.
 class FramePlayer : public Stream {
 public:
-  explicit FramePlayer(uint32_t t0) : t0_(t0) {}
+  FramePlayer(uint32_t t0, const std::function<bool()> &interrupt) : t0_(t0), interrupt_(interrupt) {}
 
   size_t write(uint8_t b) override { return write(&b, 1); }
   size_t write(const uint8_t *d, size_t n) override {
+    if (interrupted_) return 0;
+    if (interrupt_ && millis() - lastCheck_ >= 50) { // I2C read; don't do it on every chunk
+      lastCheck_ = millis();
+      if (interrupt_()) {
+        interrupted_ = true;
+        Serial.printf("EVT talk: interrupted (%lu ms)\n", (unsigned long)(millis() - t0_));
+        audio::endPlayback();
+        return 0; // makes HTTPClient::writeToStream stop reading
+      }
+    }
     size_t left = n;
     while (left) {
       if (hdrLen_ < 5) {
@@ -47,6 +57,7 @@ public:
     audio::endPlayback();
   }
   bool gotEnd() const { return ended_; }
+  bool wasInterrupted() const { return interrupted_; }
   bool hadError() const { return error_; }
   size_t audioBytes() const { return audioBytes_; }
   uint32_t firstAudioMs() const { return firstAudioMs_; }
@@ -87,6 +98,9 @@ private:
   }
 
   uint32_t t0_;
+  std::function<bool()> interrupt_;
+  uint32_t lastCheck_ = 0;
+  bool interrupted_ = false;
   uint8_t hdr_[5];
   size_t hdrLen_ = 0;
   char type_ = 0;
@@ -97,9 +111,13 @@ private:
   size_t prebufLen_ = 0, audioBytes_ = 0;
   uint32_t firstAudioMs_ = 0;
 };
+bool s_interrupted = false;
 } // namespace
 
-bool talk(const std::function<bool()> &keepGoing) {
+bool interrupted() { return s_interrupted; }
+
+bool talk(const std::function<bool()> &keepGoing, const std::function<bool()> &interrupt) {
+  s_interrupted = false;
   if (!audio::ok()) {
     Serial.println("EVT talk: audio not initialised");
     return false;
@@ -126,12 +144,17 @@ bool talk(const std::function<bool()> &keepGoing) {
 
   hw::setAll(0, 0, 60); // blue: thinking
   uint32_t t1 = millis();
-  FramePlayer *player = new FramePlayer(t1); // ~8 KB prebuffer; keep it off the loop task's stack
+  FramePlayer *player = new FramePlayer(t1, interrupt); // ~8 KB prebuffer; keep it off the loop task's stack
   net::Response res = net::apiStream("POST", "/api/device/talk-stream", rec, len, "application/octet-stream", *player);
   free(rec);
   player->finish();
   hw::setAll(0, 0, 0);
 
+  if (player->wasInterrupted()) {
+    s_interrupted = true;
+    delete player;
+    return false;
+  }
   bool ok = res.status == 200 && player->gotEnd() && !player->hadError();
   Serial.printf("EVT talk: %s status=%d, first audio %lu ms after release, %.1f s of reply, done at %lu ms%s%s\n",
                 ok ? "done" : "FAILED", res.status, (unsigned long)player->firstAudioMs(),

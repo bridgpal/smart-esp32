@@ -23,6 +23,9 @@ const char *keyName(uint8_t key);
 uint8_t readKeys();
 // Debounced edge detection; call often. Returns bitmask of keys newly pressed since last call.
 uint8_t pollKeyPresses();
+// Re-read the keys and treat their current state as already seen (call after a long blocking
+// action so a key still held, or released meanwhile, isn't misread as a new press).
+void resyncKeys();
 
 // RGB ring
 void setAll(uint8_t r, uint8_t g, uint8_t b);
