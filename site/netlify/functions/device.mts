@@ -3,13 +3,14 @@
 //   POST /api/device/event  -> { ok, received, led: [r, g, b] }   (ring color for the board to show)
 //   POST /api/device/say    -> spoken audio for { text, voice? }
 //   POST /api/device/talk   -> body: recorded speech; returns the spoken reply (+ X-Transcript, X-Reply)
+//   POST /api/device/talk-stream -> same input; streams framed output as it's generated (see below)
 // All audio is raw PCM, 16 kHz, 16-bit signed little-endian, mono.
 import type { Config, Context } from "@netlify/functions";
 import { timingSafeEqual } from "node:crypto";
 
 import { DEVICE_RATE } from "../../lib/audio.ts";
-import { gatewayActive, reply } from "../../lib/claude-reply.ts";
-import { SpeechError, speak, transcribe } from "../../lib/openai-speech.ts";
+import { gatewayActive, reply, replySentences } from "../../lib/claude-reply.ts";
+import { SpeechError, speak, speakStream, transcribe } from "../../lib/openai-speech.ts";
 
 const json = (status: number, body: unknown) => Response.json(body, { status });
 
@@ -83,6 +84,58 @@ async function talk(req: Request, deviceId: string): Promise<Response> {
   }
 }
 
+// Framed stream: [1 byte type][4 byte little-endian length][payload], repeated.
+//   T transcript text | R reply sentence text | A audio (PCM chunk) | E error text | Z end (empty)
+function frame(type: string, payload: Uint8Array = new Uint8Array()): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(5 + payload.length);
+  out[0] = type.charCodeAt(0);
+  new DataView(out.buffer).setUint32(1, payload.length, true);
+  out.set(payload, 5);
+  return out;
+}
+const utf8 = (s: string) => new TextEncoder().encode(s);
+
+function talkStream(pcm: Uint8Array, deviceId: string): Response {
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (type: string, payload?: Uint8Array) => controller.enqueue(frame(type, payload));
+      const t0 = Date.now();
+      const timing: Record<string, number> = {};
+      const said: string[] = [];
+      let heard = "";
+      try {
+        heard = await transcribe(pcm);
+        timing.sttMs = Date.now() - t0;
+        send("T", utf8(heard));
+        const sentences = heard
+          ? replySentences(heard)
+          : (async function* () {
+              yield "Sorry, I didn't catch that. Hold the button and try again.";
+            })();
+        for await (const sentence of sentences) {
+          timing[`sentence${said.length + 1}TextMs`] ??= Date.now() - t0;
+          said.push(sentence);
+          send("R", utf8(sentence));
+          let first = true;
+          await speakStream(sentence, (chunk) => {
+            if (first) timing[`sentence${said.length}AudioMs`] ??= Date.now() - t0;
+            first = false;
+            send("A", chunk);
+          });
+        }
+      } catch (e) {
+        console.error("talk-stream failed", e);
+        send("E", utf8(e instanceof SpeechError ? `${e.message} ${e.detail}` : String(e)));
+      }
+      timing.totalMs = Date.now() - t0;
+      console.log("talk-stream", { deviceId, heard, said, ...timing });
+      send("Z");
+      controller.close();
+    },
+  });
+  return new Response(body, { headers: { "Content-Type": "application/x-smart-esp32-frames" } });
+}
+
 export default async (req: Request, context: Context) => {
   const expected = Netlify.env.get("DEVICE_TOKEN");
   if (!expected) return json(500, { ok: false, error: "DEVICE_TOKEN is not set on this site" });
@@ -114,6 +167,13 @@ export default async (req: Request, context: Context) => {
 
   if (req.method === "POST" && route === "say") return say(req);
   if (req.method === "POST" && route === "talk") return talk(req, deviceId);
+  if (req.method === "POST" && route === "talk-stream") {
+    const pcm = new Uint8Array(await req.arrayBuffer());
+    const seconds = pcm.length / 2 / DEVICE_RATE;
+    if (seconds < 0.3) return json(400, { ok: false, error: "recording too short" });
+    if (seconds > 30) return json(413, { ok: false, error: "recording longer than 30 s" });
+    return talkStream(pcm, deviceId);
+  }
 
   return json(404, { ok: false, error: `no route ${req.method} /api/device/${route}` });
 };

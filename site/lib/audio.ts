@@ -45,6 +45,70 @@ export function resample(input: Int16Array, from: number, to: number): Int16Arra
   return out;
 }
 
+// Same filter as resample(), fed in chunks (e.g. a streaming TTS response). Holds back the last
+// few input samples until the next chunk arrives, so output is identical to the batch version.
+export class StreamingResampler {
+  private buf: number[] = [];
+  private pos = 0; // next output position, in input samples relative to buf[0]
+  private carry: number | null = null; // odd trailing byte from the previous chunk
+  private readonly ratio: number;
+  private readonly cutoff: number;
+  private readonly half = 16;
+
+  constructor(from: number, to: number) {
+    this.ratio = from / to;
+    this.cutoff = Math.min(1, to / from) * 0.92;
+  }
+
+  /** Raw s16le bytes in (any length), s16le bytes out. */
+  pushBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+    let data = bytes;
+    if (this.carry !== null) {
+      data = new Uint8Array(bytes.length + 1);
+      data[0] = this.carry;
+      data.set(bytes, 1);
+      this.carry = null;
+    }
+    if (data.length % 2) {
+      this.carry = data[data.length - 1];
+      data = data.subarray(0, data.length - 1);
+    }
+    for (const s of bytesToInt16(data)) this.buf.push(s);
+    return int16ToBytes(this.drain(false));
+  }
+
+  flush(): Uint8Array<ArrayBuffer> {
+    return int16ToBytes(this.drain(true));
+  }
+
+  private drain(final: boolean): Int16Array {
+    const out: number[] = [];
+    for (;;) {
+      const i0 = Math.floor(this.pos);
+      if (final ? i0 >= this.buf.length : i0 + this.half >= this.buf.length) break;
+      let acc = 0;
+      let norm = 0;
+      for (let k = -this.half + 1; k <= this.half; k++) {
+        const i = i0 + k;
+        if (i < 0 || i >= this.buf.length) continue;
+        const x = i - this.pos;
+        const sinc = x === 0 ? 1 : Math.sin(Math.PI * this.cutoff * x) / (Math.PI * this.cutoff * x);
+        const h = sinc * (0.5 + 0.5 * Math.cos((Math.PI * x) / this.half));
+        acc += this.buf[i] * h;
+        norm += h;
+      }
+      out.push(Math.max(-32768, Math.min(32767, Math.round(norm ? acc / norm : 0))));
+      this.pos += this.ratio;
+    }
+    const keepFrom = Math.max(0, Math.floor(this.pos) - this.half + 1);
+    if (keepFrom > 0) {
+      this.buf.splice(0, keepFrom);
+      this.pos -= keepFrom;
+    }
+    return Int16Array.from(out);
+  }
+}
+
 // Minimal 44-byte RIFF/WAVE header + data, for APIs that want a file.
 export function pcmToWav(pcm: Uint8Array, sampleRate: number): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(44 + pcm.length);
