@@ -1,4 +1,324 @@
 <!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>smart-esp32</title>
-<p>smart-esp32 device API. Endpoints live under <code>/api/device/*</code> and need a device token.</p>
+<meta name="description" content="A desk voice assistant: an ESP32-S3 speaker board that answers questions through a Netlify Function, Claude and OpenAI speech.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=Martian+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --acrylic: #e9edf1;   /* frosted lid */
+    --panel: #f6f8fa;
+    --ink: #151a20;       /* slate */
+    --muted: #5b6672;
+    --rule: #cfd6dd;
+    --pcb: #2348a0;       /* board edge blue, the one accent */
+    --led-listen: #ff4436;
+    --led-think: #3d82ff;
+    --led-speak: #2fd36b;
+    --led-off: #c4cbd2;
+    --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+    --body: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --acrylic: #101419;
+      --panel: #171c22;
+      --ink: #e8edf2;
+      --muted: #96a2ae;
+      --rule: #2a323b;
+      --pcb: #7fa2ff;
+      --led-off: #2a3138;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--acrylic);
+    color: var(--ink);
+    font: 400 17px/1.6 var(--body);
+  }
+  a { color: var(--pcb); text-underline-offset: 3px; }
+  a:focus-visible, .button:focus-visible { outline: 2px solid var(--pcb); outline-offset: 3px; border-radius: 6px; }
+  code, .mono { font-family: var(--mono); font-size: 0.82em; letter-spacing: -0.01em; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  /* Hero */
+  .hero {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 56px;
+    align-items: center;
+    padding: 72px 0 64px;
+  }
+  .ring-box { display: grid; justify-items: center; gap: 18px; }
+  .ring {
+    --size: 240px;
+    position: relative;
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 45%, var(--panel) 0 52%, transparent 53%),
+                radial-gradient(circle, color-mix(in srgb, var(--ring-glow, transparent) 22%, transparent) 0 70%, transparent 71%);
+    box-shadow: inset 0 0 0 1px var(--rule);
+    transition: background 400ms ease;
+  }
+  .led {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 22px; height: 22px;
+    margin: -11px 0 0 -11px;
+    border-radius: 50%;
+    background: var(--c, var(--led-off));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--c, var(--led-off)) 25%, transparent),
+                0 0 22px 4px color-mix(in srgb, var(--c, transparent) 70%, transparent);
+    transform: rotate(calc(var(--i) * 360deg / 7)) translateY(-92px);
+    transition: background 300ms ease, box-shadow 300ms ease;
+  }
+  .state {
+    max-width: 300px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+    min-height: 1.6em;
+    text-align: center;
+  }
+  .state b { color: var(--ink); font-weight: 500; }
+
+  .eyebrow { font-family: var(--mono); font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  h1 { font-size: clamp(40px, 6vw, 66px); line-height: 1.02; font-variation-settings: "opsz" 96; }
+  h1 .key {
+    display: inline-block;
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 0.62em;
+    padding: 0.08em 0.38em;
+    border: 2px solid var(--ink);
+    border-bottom-width: 5px;
+    border-radius: 10px;
+    vertical-align: 0.12em;
+  }
+  .lede { font-size: 19px; color: var(--muted); max-width: 34em; margin: 22px 0 28px; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .button {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 18px;
+    border-radius: 999px;
+    font-weight: 600; font-size: 15px;
+    text-decoration: none;
+    border: 1.5px solid var(--ink);
+    color: var(--ink);
+  }
+  .button.primary { background: var(--ink); color: var(--acrylic); }
+
+  /* Sections */
+  section { padding: 56px 0; border-top: 1px solid var(--rule); }
+  h2 { font-size: clamp(28px, 3.4vw, 38px); line-height: 1.1; margin-bottom: 10px; }
+  .sub { color: var(--muted); margin: 0 0 32px; max-width: 40em; }
+
+  /* Round trip: a real sequence, so time stamps carry order */
+  .trip { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; }
+  .trip li { position: relative; padding: 22px 18px 0 0; border-top: 3px solid var(--rule); }
+  .trip li::before {
+    content: ""; position: absolute; top: -8px; left: 0;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--dot, var(--led-off));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--dot, transparent) 60%, transparent);
+  }
+  .trip .t { display: block; font-family: var(--mono); font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+  .trip h3 { font-size: 19px; margin: 4px 0 6px; }
+  .trip p { margin: 0; font-size: 15px; color: var(--muted); }
+  .who { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pcb); }
+
+  /* Two halves */
+  .halves { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 18px; padding: 28px; }
+  .card h3 { font-size: 24px; margin-bottom: 4px; }
+  .card .path { font-family: var(--mono); font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+  .card img { width: 100%; height: auto; border-radius: 12px; display: block; margin-bottom: 18px; background: #fff; }
+  .card ul { margin: 0; padding-left: 1.1em; }
+  .card li { margin: 0 0 8px; }
+  .card li::marker { color: var(--pcb); }
+
+  /* Endpoints */
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 12px 14px 12px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  td:first-child { white-space: nowrap; }
+  .method { color: var(--pcb); }
+  .note { font-size: 14px; color: var(--muted); margin-top: 16px; }
+
+  footer { border-top: 1px solid var(--rule); padding: 32px 0 48px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; gap: 36px; padding-top: 48px; }
+    .ring-box { order: -1; }
+    .trip { grid-template-columns: 1fr; gap: 0; }
+    .trip li { border-top: 0; border-left: 3px solid var(--rule); padding: 0 0 26px 24px; }
+    .trip li::before { top: 4px; left: -8px; }
+    .halves { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 420px) {
+    .wrap { padding: 0 16px; }
+    .ring { --size: 200px; }
+    .led { transform: rotate(calc(var(--i) * 360deg / 7)) translateY(-76px); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="wrap hero">
+    <div class="ring-box" aria-hidden="true">
+      <div class="ring" id="ring">
+        <span class="led" style="--i:0"></span><span class="led" style="--i:1"></span>
+        <span class="led" style="--i:2"></span><span class="led" style="--i:3"></span>
+        <span class="led" style="--i:4"></span><span class="led" style="--i:5"></span>
+        <span class="led" style="--i:6"></span>
+      </div>
+      <div class="state" id="state"><b>speaking</b> · about 5 s after you let go</div>
+    </div>
+
+    <div>
+      <p class="eyebrow">smart-esp32 · ESP32-S3 + Netlify</p>
+      <h1>Hold <span class="key">K2</span>, ask a question, let go.</h1>
+      <p class="lede">
+        A $25 speaker board on a desk that answers out loud. The board only records and plays
+        audio. <strong>A Netlify Function does the rest:</strong> it transcribes your question,
+        asks Claude for a short answer, and streams the spoken reply back as it's generated.
+      </p>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/bridgpal/smart-esp32">Source on GitHub</a>
+        <a class="button" href="https://www.amazon.com/dp/B0GWQDCHK8">The board on Amazon</a>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2>One question, start to finish</h2>
+      <p class="sub">Timings measured on the real board over Wi-Fi, counted from the moment you release the button.</p>
+      <ol class="trip">
+        <li style="--dot: var(--led-listen)">
+          <span class="t">while held</span> <span class="who">Board</span>
+          <h3>Listening</h3>
+          <p>Records 16 kHz audio from the mic array while K2 is held. The ring turns red.</p>
+        </li>
+        <li style="--dot: var(--led-think)">
+          <span class="t">0.0 s</span> <span class="who">Board → Netlify</span>
+          <h3>Upload</h3>
+          <p>Posts the recording to <code>/api/device/talk-stream</code>. The ring turns blue.</p>
+        </li>
+        <li style="--dot: var(--led-think)">
+          <span class="t">≈ 2.0 s</span> <span class="who">Netlify</span>
+          <h3>Transcribe</h3>
+          <p>OpenAI speech-to-text. The transcript streams back to the board's console first.</p>
+        </li>
+        <li style="--dot: var(--led-think)">
+          <span class="t">≈ 3.8 s</span> <span class="who">Netlify</span>
+          <h3>Answer</h3>
+          <p>Claude, through the Netlify AI Gateway, writes one or two short sentences, streamed sentence by sentence.</p>
+        </li>
+        <li style="--dot: var(--led-speak)">
+          <span class="t">≈ 5.0 s</span> <span class="who">Netlify → Board</span>
+          <h3>Speak</h3>
+          <p>Each sentence becomes speech, is resampled to 16 kHz and plays while the rest is still arriving. The ring turns green.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Two halves, one repo</h2>
+      <p class="sub">The board holds no API keys and no AI code. Swap models or prompts on Netlify without reflashing anything.</p>
+      <div class="halves">
+        <div class="card">
+          <h3>The board</h3>
+          <p class="path">firmware/ · C++, PlatformIO</p>
+          <img src="/device.jpg" width="679" height="491" alt="The ESP32-S3 speaker board in its frosted enclosure, next to its separate speaker module">
+          <ul>
+            <li>ESP32-S3, 16 MB flash, 8 MB PSRAM, Wi-Fi</li>
+            <li>ES7210 dual-mic input, ES8311 codec and speaker amp</li>
+            <li>Seven-LED ring and three buttons: K2 talks, and interrupts a reply</li>
+            <li>Plays streamed audio after a 250 ms buffer</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>The Netlify site</h3>
+          <p class="path">site/ · TypeScript, Netlify Functions</p>
+          <ul>
+            <li><strong>Functions</strong> are the device's whole backend, routed at <code>/api/device/*</code>.</li>
+            <li><strong>Streaming responses</strong> send reply audio out sentence by sentence instead of all at once.</li>
+            <li><strong>AI Gateway</strong> supplies Claude credentials at runtime, so no Anthropic key is stored anywhere.</li>
+            <li><strong>Environment variables</strong> hold the device token and the OpenAI speech key as secrets.</li>
+            <li><strong>Git deploys</strong> from <code>main</code>, skipping the build when only firmware changes.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Device API</h2>
+      <p class="sub">Every request needs the device token as <code>Authorization: Bearer</code>. Audio is raw PCM: 16 kHz, 16-bit, mono.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Send</th><th>Get back</th></tr></thead>
+          <tbody>
+            <tr><td><code><span class="method">GET</span> /api/device/ping</code></td><td>nothing</td><td>server time, deploy ID, and which AI services are configured</td></tr>
+            <tr><td><code><span class="method">POST</span> /api/device/event</code></td><td>a button press</td><td>a color for the LED ring</td></tr>
+            <tr><td><code><span class="method">POST</span> /api/device/say</code></td><td>text</td><td>that text as speech</td></tr>
+            <tr><td><code><span class="method">POST</span> /api/device/talk</code></td><td>a recording</td><td>the spoken reply, all at once</td></tr>
+            <tr><td><code><span class="method">POST</span> /api/device/talk-stream</code></td><td>a recording</td><td>transcript, reply text and audio, streamed as frames</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Requests without a valid token get <code>401</code>. The board is the only intended client.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>smart-esp32 · hosted on Netlify</span>
+    <span><a href="https://www.waveshare.com/wiki/ESP32-S3-AUDIO-Board">Board hardware wiki</a> · <a href="https://github.com/bridgpal/smart-esp32">Source</a></span>
+  </div>
+</footer>
+
+<script>
+  // The ring on the real board: red while you hold K2, blue while Netlify works, green while it speaks.
+  (function () {
+    var ring = document.getElementById("ring");
+    var state = document.getElementById("state");
+    if (!ring || !state) return;
+    var leds = ring.querySelectorAll(".led");
+    var phases = [
+      { color: "--led-listen", label: "<b>listening</b> · K2 held", ms: 2600 },
+      { color: "--led-think", label: "<b>thinking</b> · Netlify is answering", ms: 2400 },
+      { color: "--led-speak", label: "<b>speaking</b> · about 5 s after you let go", ms: 3800 },
+      { color: null, label: "idle · hold K2 to ask", ms: 1400 }
+    ];
+    function show(p) {
+      var c = p.color ? "var(" + p.color + ")" : "";
+      leds.forEach(function (led) { led.style.setProperty("--c", c); });
+      ring.style.setProperty("--ring-glow", c || "transparent");
+      state.innerHTML = p.label;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { show(phases[2]); return; }
+    var i = 0;
+    (function next() { show(phases[i]); setTimeout(next, phases[i].ms); i = (i + 1) % phases.length; })();
+  })();
+</script>
+</body>
+</html>
