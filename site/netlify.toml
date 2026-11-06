@@ -1,6 +1,0 @@
-# Netlify site for the device API. In the Netlify UI, set Base directory = site.
-[build]
-  publish = "public"
-
-[functions]
-  directory = "netlify/functions"

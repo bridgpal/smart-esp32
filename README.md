@@ -7,7 +7,8 @@ board calls. Secrets live in a gitignored `.env` at the repo root, shared by bot
 ```
 .env.example   template for .env (Wi-Fi, API base URL, DEVICE_TOKEN)
 firmware/      PlatformIO project, Makefile, dev scripts
-site/          Netlify site: netlify.toml, functions, static files
+netlify.toml   Netlify config (base = site)
+site/          Netlify site: functions, static files, package.json
 ```
 
 ## Secrets
@@ -67,7 +68,8 @@ If upload can't connect: hold BOOT, tap RESET, release BOOT, then `make flash` a
 
 ## Netlify site (`site/`)
 
-Link the repo in Netlify with **Base directory = `site`**. Set `DEVICE_TOKEN` on the site to the
+The root `netlify.toml` sets base directory `site`, so linking the repo needs no UI settings.
+Commits that don't touch `site/` skip the Netlify build. Set `DEVICE_TOKEN` on the site to the
 value in your `.env`.
 
 | Endpoint | Returns |
