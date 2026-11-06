@@ -69,7 +69,21 @@ def main():
     if a.listen:
         end = time.time() + a.listen
         while time.time() < end:
-            data = s.read(4096)
+            try:
+                data = s.read(4096)
+            except serial.SerialException:
+                # RESET (or a crash) re-enumerates USB; wait for the port to come back.
+                print("\n(board disconnected, waiting for it to come back)", flush=True)
+                s.close()
+                while time.time() < end:
+                    time.sleep(0.5)
+                    try:
+                        s = open_port(a.port or find_port())
+                        print("(reconnected)", flush=True)
+                        break
+                    except (serial.SerialException, SystemExit):
+                        continue
+                continue
             if data:
                 sys.stdout.write(data.decode(errors="replace"))
                 sys.stdout.flush()

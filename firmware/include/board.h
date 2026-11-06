@@ -31,7 +31,8 @@
 #define PIN_SD_CMD 42
 #define PIN_SD_D0 41
 
-// --- Native GPIO buttons ---
+// --- Buttons. Physical order, right to left: K1, K2, K3, BOOT, RESET (verified on this unit).
+// RESET is the chip enable line: it reboots the board and re-enumerates USB; firmware can't read it.
 #define PIN_BOOT 0
 
 // --- TCA9555 expander pins (EXIO numbering, 0..15) ---

@@ -12,7 +12,8 @@ Key presses on the board POST to a Netlify Function, and the color it returns li
 | Memory | 16 MB quad flash, 8 MB embedded octal PSRAM |
 | USB | native USB-Serial/JTAG (shows up as `/dev/cu.usbmodem*`, no driver needed) |
 | Audio | ES8311 codec + speaker amp, ES7210 mic ADC with dual mic array |
-| Other | 7x RGB ring (GPIO38), TCA9555 IO expander (amp enable, 3 keys), PCF85063 RTC, TF slot, LCD + camera FPC connectors |
+| Buttons | right to left: K1, K2, K3 (on the IO expander), BOOT (GPIO0), RESET (hardware reset, not readable) |
+| Other | 7x RGB ring (GPIO38, RGB byte order), TCA9555 IO expander (amp enable, 3 keys), PCF85063 RTC, TF slot, LCD + camera FPC connectors |
 
 Pin map lives in [`firmware/include/board.h`](firmware/include/board.h). Source: Waveshare's
 factory demo, so double-check anything new against `make cmd C=scan` and the
