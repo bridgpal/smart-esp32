@@ -1,5 +1,10 @@
 # smart-esp32
 
+<img src="docs/device.jpg" alt="SMKTelec ESP32-S3 AI Smart Speaker board in its enclosure, with the separate speaker module" width="420">
+
+**Device:** [SMKTelec ESP32-S3 AI Smart Speaker Development Board (Amazon B0GWQDCHK8)](https://www.amazon.com/dp/B0GWQDCHK8),
+a rebrand of the [Waveshare ESP32-S3-AUDIO-Board](https://www.waveshare.com/wiki/ESP32-S3-AUDIO-Board).
+
 TL;DR: two halves in one repo. `firmware/` runs on the SMKTelec "ESP32-S3 AI Smart Speaker"
 board (a Waveshare ESP32-S3-AUDIO-Board clone). `site/` is the Netlify site whose functions the
 board calls. Secrets live in a gitignored `.env` at the repo root, shared by both.
