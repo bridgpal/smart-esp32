@@ -135,6 +135,106 @@ Response request(const char *method, const String &url, const String &jsonBody, 
   return res;
 }
 
+namespace {
+// Stream sink that appends into a fixed PSRAM buffer (HTTPClient::writeToStream decodes chunking).
+class BufferSink : public Stream {
+public:
+  BufferSink(uint8_t *buf, size_t cap) : buf_(buf), cap_(cap) {}
+  size_t write(uint8_t b) override { return write(&b, 1); }
+  size_t write(const uint8_t *d, size_t n) override {
+    if (len_ + n > cap_) {
+      overflow_ = true;
+      n = cap_ - len_;
+    }
+    memcpy(buf_ + len_, d, n);
+    len_ += n;
+    return n;
+  }
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  size_t len() const { return len_; }
+  bool overflow() const { return overflow_; }
+
+private:
+  uint8_t *buf_;
+  size_t cap_, len_ = 0;
+  bool overflow_ = false;
+};
+} // namespace
+
+String urlDecode(const String &in) {
+  String out;
+  out.reserve(in.length());
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    if (c == '%' && i + 2 < in.length()) {
+      out += (char)strtol(in.substring(i + 1, i + 3).c_str(), nullptr, 16);
+      i += 2;
+    } else {
+      out += c == '+' ? ' ' : c;
+    }
+  }
+  return out;
+}
+
+Binary apiBinary(const char *method, const String &path, const uint8_t *body, size_t bodyLen,
+                 const char *contentType, size_t maxBytes) {
+  Binary out;
+  Response &res = out.res;
+  if (!s_cfg.apiBase.length()) {
+    res.error = "api.base not set";
+    return out;
+  }
+  if (!connected()) {
+    res.error = "wifi not connected";
+    return out;
+  }
+
+  NetworkClientSecure client;
+  client.useBuiltinCACertBundle();
+  HTTPClient http;
+  http.setTimeout(20000);
+  http.setConnectTimeout(10000);
+  if (!http.begin(client, s_cfg.apiBase + path)) {
+    res.error = "bad url";
+    return out;
+  }
+  http.setUserAgent("smart-esp32/" FW_VERSION);
+  http.addHeader("X-Device-Id", deviceId());
+  http.addHeader("Authorization", "Bearer " + s_cfg.apiToken);
+  if (bodyLen) http.addHeader("Content-Type", contentType);
+  const char *want[] = {"X-Transcript", "X-Reply"};
+  http.collectHeaders(want, 2);
+
+  res.status = http.sendRequest(method, (uint8_t *)body, bodyLen);
+  out.transcript = urlDecode(http.header("X-Transcript"));
+  out.reply = urlDecode(http.header("X-Reply"));
+  if (res.status <= 0) {
+    res.error = HTTPClient::errorToString(res.status);
+  } else if (res.status != 200) {
+    res.body = http.getString();
+  } else {
+    uint8_t *buf = (uint8_t *)ps_malloc(maxBytes);
+    if (!buf) {
+      res.error = "out of PSRAM";
+    } else {
+      BufferSink sink(buf, maxBytes);
+      int written = http.writeToStream(&sink);
+      if (written < 0 && !sink.overflow()) {
+        res.error = HTTPClient::errorToString(written);
+        free(buf);
+      } else {
+        out.data = buf;
+        out.len = sink.len();
+        if (sink.overflow()) res.error = "truncated at " + String(maxBytes) + " bytes";
+      }
+    }
+  }
+  http.end();
+  return out;
+}
+
 Response api(const char *method, const String &path, const String &jsonBody) {
   if (!s_cfg.apiBase.length()) {
     Response res;

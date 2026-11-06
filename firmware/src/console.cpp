@@ -1,10 +1,13 @@
 #include "console.h"
 
+#include <ArduinoJson.h>
 #include <WiFi.h>
 #include <esp_chip_info.h>
 
+#include "audio.h"
 #include "hw.h"
 #include "net.h"
+#include "voice.h"
 
 namespace console {
 
@@ -51,6 +54,12 @@ void cmdHelp() {
       "  ping                      GET  {api.base}/api/device/ping\n"
       "  event <type> [key]        POST {api.base}/api/device/event\n"
       "  get <https-url>           HTTPS GET any URL\n"
+      "  tone [hz] [ms]            speaker beep (default 440 Hz, 500 ms)\n"
+      "  vol [0-100]               show or set speaker volume\n"
+      "  rec [seconds]             record from the mics, print levels (default 3 s)\n"
+      "  playback                  play the last `rec` recording\n"
+      "  say <text>                TTS via {api.base}/api/device/say and play it\n"
+      "  talk [seconds]            record, then full voice round trip via /api/device/talk\n"
       "  reboot\n");
   ok();
 }
@@ -180,6 +189,79 @@ void cmdEvent(String rest) {
   r.ok() ? ok() : err("event failed");
 }
 
+void cmdTone(String rest) {
+  if (!audio::ok()) return err("audio not initialised");
+  String hz = nextToken(rest), ms = nextToken(rest);
+  audio::tone(hz.length() ? hz.toInt() : 440, ms.length() ? ms.toInt() : 500);
+  ok();
+}
+
+void cmdVol(String rest) {
+  String v = nextToken(rest);
+  if (v.length() && !audio::setVolume(v.toInt())) return err("codec write failed");
+  Serial.printf("volume: %d\n", audio::volume());
+  ok();
+}
+
+void cmdSay(String rest) {
+  rest.trim();
+  if (!rest.length()) return err("usage: say <text>");
+  if (!audio::ok()) return err("audio not initialised");
+  JsonDocument doc;
+  doc["text"] = rest;
+  String body;
+  serializeJson(doc, body);
+
+  uint32_t t0 = millis();
+  net::Binary b = net::apiBinary("POST", "/api/device/say", (const uint8_t *)body.c_str(), body.length(),
+                                 "application/json", 4 * 1024 * 1024); // ~2 min of 16 kHz audio
+  uint32_t t1 = millis();
+  if (!b.data) {
+    printResponse(b.res, 512);
+    return err("say failed");
+  }
+  Serial.printf("got %u bytes (%.1f s of audio) in %lu ms%s%s\n", (unsigned)b.len,
+                b.len / 2.0f / audio::SAMPLE_RATE, (unsigned long)(t1 - t0), b.res.error.length() ? ", " : "",
+                b.res.error.c_str());
+  audio::playPcm16(b.data, b.len);
+  free(b.data);
+  ok();
+}
+
+uint8_t *s_lastRec = nullptr;
+size_t s_lastRecLen = 0;
+
+void cmdRec(String rest) {
+  if (!audio::ok()) return err("audio not initialised");
+  String a = nextToken(rest);
+  float secs = a.length() ? a.toFloat() : 3;
+  if (secs <= 0 || secs > voice::MAX_RECORD_SECONDS) return err("seconds must be 0-10");
+  if (!s_lastRec) s_lastRec = (uint8_t *)ps_malloc(voice::MAX_RECORD_SECONDS * audio::SAMPLE_RATE * 2);
+  if (!s_lastRec) return err("out of PSRAM");
+  size_t want = (size_t)(secs * audio::SAMPLE_RATE) * 2;
+  float l = 0, r = 0;
+  hw::setAll(60, 0, 0);
+  s_lastRecLen = audio::record(s_lastRec, want, [] { return true; }, &l, &r);
+  hw::setAll(0, 0, 0);
+  int16_t peak = 0;
+  for (size_t i = 0; i < s_lastRecLen / 2; i++) peak = max(peak, (int16_t)abs(((int16_t *)s_lastRec)[i]));
+  Serial.printf("recorded %u bytes; rms L(mic1)=%.0f R(mic2)=%.0f; peak(mic1)=%d\n", (unsigned)s_lastRecLen, l, r, peak);
+  ok();
+}
+
+void cmdPlayback() {
+  if (!s_lastRecLen) return err("nothing recorded yet (rec first)");
+  audio::playPcm16(s_lastRec, s_lastRecLen);
+  ok();
+}
+
+void cmdTalk(String rest) {
+  String a = nextToken(rest);
+  float secs = a.length() ? a.toFloat() : 4;
+  uint32_t until = millis() + (uint32_t)(secs * 1000);
+  voice::talk([until] { return (int32_t)(millis() - until) < 0; }) ? ok() : err("talk failed");
+}
+
 void cmdGet(String rest) {
   String url = nextToken(rest);
   if (!url.length()) return err("usage: get <https-url>");
@@ -206,6 +288,12 @@ void run(String line) {
   else if (cmd == "ping") cmdPing();
   else if (cmd == "event") cmdEvent(rest);
   else if (cmd == "get") cmdGet(rest);
+  else if (cmd == "tone") cmdTone(rest);
+  else if (cmd == "vol") cmdVol(rest);
+  else if (cmd == "rec") cmdRec(rest);
+  else if (cmd == "playback") cmdPlayback();
+  else if (cmd == "say") cmdSay(rest);
+  else if (cmd == "talk") cmdTalk(rest);
   else if (cmd == "reboot") {
     ok();
     Serial.flush();

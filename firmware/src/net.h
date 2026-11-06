@@ -36,4 +36,16 @@ Response request(const char *method, const String &url, const String &jsonBody =
 // Request against config().apiBase with the device token and X-Device-Id header.
 Response api(const char *method, const String &path, const String &jsonBody = "");
 
+// Binary download from the API into a PSRAM buffer. On success data/len hold the body and the
+// caller must free(data). On HTTP errors the (JSON) error body is in res.body and data is null.
+struct Binary {
+  Response res;
+  uint8_t *data = nullptr;
+  size_t len = 0;
+  String transcript, reply; // X-Transcript / X-Reply response headers (URL-decoded), if present
+};
+// body may be JSON (contentType "application/json") or raw bytes ("application/octet-stream").
+Binary apiBinary(const char *method, const String &path, const uint8_t *body, size_t bodyLen,
+                 const char *contentType, size_t maxBytes);
+
 } // namespace net

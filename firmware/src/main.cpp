@@ -7,9 +7,11 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 
+#include "audio.h"
 #include "console.h"
 #include "hw.h"
 #include "net.h"
+#include "voice.h"
 
 namespace {
 bool s_wasConnected = false;
@@ -51,20 +53,28 @@ void setup() {
   while (!Serial && millis() - start < 1500) delay(10); // give the USB console a moment
 
   bool hwOk = hw::begin();
+  bool audioOk = audio::begin();
   hw::spin(0, 40, 80);
   net::loadConfig();
   net::begin();
 
-  Serial.printf("\nsmart-esp32 %s on %s, expander %s. Type 'help'.\n", FW_VERSION, net::deviceId().c_str(),
-                hwOk ? "ok" : "MISSING");
+  Serial.printf("\nsmart-esp32 %s on %s, expander %s, audio %s. Hold K2 to talk. Type 'help'.\n", FW_VERSION,
+                net::deviceId().c_str(), hwOk ? "ok" : "MISSING", audioOk ? "ok" : "FAILED");
 }
 
 void loop() {
   console::poll();
 
   uint8_t pressed = hw::pollKeyPresses();
-  for (uint8_t k = 0; k < hw::KEY_COUNT; k++)
-    if (pressed & (1 << k)) onKeyPress(k);
+  for (uint8_t k = 0; k < hw::KEY_COUNT; k++) {
+    if (!(pressed & (1 << k))) continue;
+    if (k == hw::KEY_10) { // K2: hold to talk
+      Serial.println("EVT key K2 (talk)");
+      voice::talk([] { return (hw::readKeys() >> hw::KEY_10) & 1; });
+    } else {
+      onKeyPress(k);
+    }
+  }
 
   bool now = net::connected();
   if (now != s_wasConnected) {
