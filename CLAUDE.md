@@ -19,4 +19,4 @@ site the board calls). README.md has the hardware table and both dev loops.
 ## Site (run npm from `site/`)
 - Functions in `site/netlify/functions/` (modern `export default` + `config.path`). `npm run typecheck`.
 - Netlify config is the root `netlify.toml` (base = `site`). No local dev servers; verify against a deploy preview.
-- Production deploys only via merge to main.
+- Loose workflow: commit and push straight to main (that deploys production). No PRs needed.
