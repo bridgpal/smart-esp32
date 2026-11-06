@@ -59,7 +59,7 @@ void cmdHelp() {
       "  rec [seconds]             record from the mics, print levels (default 3 s)\n"
       "  playback                  play the last `rec` recording\n"
       "  say <text>                TTS via {api.base}/api/device/say and play it\n"
-      "  talk [seconds]            record, then full voice round trip via /api/device/talk\n"
+      "  talk [seconds]            record, then streamed voice round trip via /api/device/talk-stream\n"
       "  reboot\n");
   ok();
 }
