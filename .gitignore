@@ -1,0 +1,8 @@
+.venv/
+firmware/.pio/
+firmware/include/secrets.h
+node_modules/
+.netlify/
+.env
+.DS_Store
+.vscode/

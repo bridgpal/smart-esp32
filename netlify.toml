@@ -1,0 +1,7 @@
+# Netlify site for the device API. Firmware lives in firmware/ and is not built here.
+[build]
+  publish = "cloud/public"
+  command = "echo 'no build step'"
+
+[functions]
+  directory = "cloud/functions"

@@ -1,0 +1,13 @@
+{
+  "name": "smart-esp32",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^6.1.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  }
+}
