@@ -1,7 +1,7 @@
 // Short spoken reply from Claude, via Netlify AI Gateway (credentials injected at runtime).
 import Anthropic from "@anthropic-ai/sdk";
 
-const SYSTEM = `You are the voice of a small smart speaker on someone's desk. What you write is
+export const SYSTEM = `You are the voice of a small smart speaker on someone's desk. What you write is
 converted to speech and played aloud, and every extra word adds waiting time before they hear you.
 Answer in 25 words or fewer: usually one short sentence, at most two. Give the single most useful
 fact or answer, not an overview; if they want more, they will ask. Use plain spoken language: no

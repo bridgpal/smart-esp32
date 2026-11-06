@@ -4,12 +4,14 @@
 //   POST /api/device/say    -> spoken audio for { text, voice? }
 //   POST /api/device/talk   -> body: recorded speech; returns the spoken reply (+ X-Transcript, X-Reply)
 //   POST /api/device/talk-stream -> same input; streams framed output as it's generated (see below)
+//   POST /api/device/talk-audio  -> same input and frames, but one OpenAI audio-in/audio-out call
 // All audio is raw PCM, 16 kHz, 16-bit signed little-endian, mono.
 import type { Config, Context } from "@netlify/functions";
 import { timingSafeEqual } from "node:crypto";
 
 import { DEVICE_RATE } from "../../lib/audio.ts";
 import { gatewayActive, reply, replySentences } from "../../lib/claude-reply.ts";
+import { audioReply } from "../../lib/openai-audio.ts";
 import { SpeechError, speak, speakStream, transcribe } from "../../lib/openai-speech.ts";
 
 const json = (status: number, body: unknown) => Response.json(body, { status });
@@ -136,6 +138,47 @@ function talkStream(pcm: Uint8Array, deviceId: string): Response {
   return new Response(body, { headers: { "Content-Type": "application/x-smart-esp32-frames" } });
 }
 
+// Single-call variant: no transcript of the question (audio goes straight in), so no T frame.
+// The reply text arrives as transcript deltas and is sent as one R frame per sentence-ish chunk.
+function talkAudio(pcm: Uint8Array, deviceId: string): Response {
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (type: string, payload?: Uint8Array) => controller.enqueue(frame(type, payload));
+      const t0 = Date.now();
+      let text = "";
+      let pending = "";
+      let firstAudioMs: number | undefined;
+      let model = "";
+      try {
+        model = await audioReply(pcm, {
+          onText: (delta) => {
+            text += delta;
+            pending += delta;
+            const cut = pending.search(/[.!?]["')\]]*\s+\S/);
+            if (cut >= 0) {
+              const end = pending.slice(cut).search(/\s/) + cut;
+              send("R", utf8(pending.slice(0, end).trim()));
+              pending = pending.slice(end).trimStart();
+            }
+          },
+          onAudio: (chunk) => {
+            firstAudioMs ??= Date.now() - t0;
+            send("A", chunk);
+          },
+        });
+        if (pending.trim()) send("R", utf8(pending.trim()));
+      } catch (e) {
+        console.error("talk-audio failed", e);
+        send("E", utf8(e instanceof SpeechError ? `${e.message} ${e.detail}` : String(e)));
+      }
+      console.log("talk-audio", { deviceId, model, said: text, firstAudioMs, totalMs: Date.now() - t0 });
+      send("Z");
+      controller.close();
+    },
+  });
+  return new Response(body, { headers: { "Content-Type": "application/x-smart-esp32-frames" } });
+}
+
 export default async (req: Request, context: Context) => {
   const expected = Netlify.env.get("DEVICE_TOKEN");
   if (!expected) return json(500, { ok: false, error: "DEVICE_TOKEN is not set on this site" });
@@ -167,12 +210,12 @@ export default async (req: Request, context: Context) => {
 
   if (req.method === "POST" && route === "say") return say(req);
   if (req.method === "POST" && route === "talk") return talk(req, deviceId);
-  if (req.method === "POST" && route === "talk-stream") {
+  if (req.method === "POST" && (route === "talk-stream" || route === "talk-audio")) {
     const pcm = new Uint8Array(await req.arrayBuffer());
     const seconds = pcm.length / 2 / DEVICE_RATE;
     if (seconds < 0.3) return json(400, { ok: false, error: "recording too short" });
     if (seconds > 30) return json(413, { ok: false, error: "recording longer than 30 s" });
-    return talkStream(pcm, deviceId);
+    return route === "talk-audio" ? talkAudio(pcm, deviceId) : talkStream(pcm, deviceId);
   }
 
   return json(404, { ok: false, error: `no route ${req.method} /api/device/${route}` });
