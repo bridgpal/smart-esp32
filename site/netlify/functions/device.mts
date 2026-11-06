@@ -87,7 +87,7 @@ async function talk(req: Request, deviceId: string): Promise<Response> {
 }
 
 // Framed stream: [1 byte type][4 byte little-endian length][payload], repeated.
-//   T transcript text | R reply sentence text | A audio (PCM chunk) | E error text | Z end (empty)
+//   T transcript text | R reply sentence text | A audio (PCM chunk) | E error text | M model name | Z end (empty)
 function frame(type: string, payload: Uint8Array = new Uint8Array()): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(5 + payload.length);
   out[0] = type.charCodeAt(0);
@@ -167,6 +167,7 @@ function talkAudio(pcm: Uint8Array, deviceId: string): Response {
           },
         });
         if (pending.trim()) send("R", utf8(pending.trim()));
+        send("M", utf8(model)); // which model answered (devices ignore unknown frame types)
       } catch (e) {
         console.error("talk-audio failed", e);
         send("E", utf8(e instanceof SpeechError ? `${e.message} ${e.detail}` : String(e)));
