@@ -52,37 +52,33 @@
   /* Hero */
   .hero {
     display: grid;
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: minmax(280px, 400px) 1fr;
     gap: 56px;
     align-items: center;
     padding: 72px 0 64px;
   }
-  .ring-box { display: grid; justify-items: center; gap: 18px; }
-  .ring {
-    --size: 240px;
+  .device {
     position: relative;
-    width: var(--size);
-    height: var(--size);
-    border-radius: 50%;
-    background: radial-gradient(circle at 50% 45%, var(--panel) 0 52%, transparent 53%),
-                radial-gradient(circle, color-mix(in srgb, var(--ring-glow, transparent) 22%, transparent) 0 70%, transparent 71%);
-    box-shadow: inset 0 0 0 1px var(--rule);
-    transition: background 400ms ease;
+    margin: 0;
+    display: grid;
+    justify-items: center;
+    gap: 14px;
   }
-  .led {
+  /* The real ring glows red / blue / green; the illustration gets that light underneath it. */
+  .device::before {
+    content: "";
     position: absolute;
-    left: 50%; top: 50%;
-    width: 22px; height: 22px;
-    margin: -11px 0 0 -11px;
+    inset: 22% -8% 10%;
     border-radius: 50%;
-    background: var(--c, var(--led-off));
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--c, var(--led-off)) 25%, transparent),
-                0 0 22px 4px color-mix(in srgb, var(--c, transparent) 70%, transparent);
-    transform: rotate(calc(var(--i) * 360deg / 7)) translateY(-92px);
-    transition: background 300ms ease, box-shadow 300ms ease;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--glow, transparent) 85%, transparent), transparent);
+    filter: blur(34px);
+    transition: background 600ms ease;
+    z-index: 0;
   }
+  .device picture, .device figcaption { position: relative; z-index: 1; }
+  .device img { display: block; width: 100%; max-width: 380px; height: auto; }
   .state {
-    max-width: 300px;
+    max-width: 380px;
     font-family: var(--mono);
     font-size: 13px;
     color: var(--muted);
@@ -143,7 +139,7 @@
   .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 18px; padding: 28px; }
   .card h3 { font-size: 24px; margin-bottom: 4px; }
   .card .path { font-family: var(--mono); font-size: 13px; color: var(--muted); margin: 0 0 18px; }
-  .card img { width: 100%; height: auto; border-radius: 12px; display: block; margin-bottom: 18px; background: #fff; }
+  .card img { width: 100%; height: auto; display: block; margin: 4px 0 18px; }
   .card ul { margin: 0; padding-left: 1.1em; }
   .card li { margin: 0 0 8px; }
   .card li::marker { color: var(--pcb); }
@@ -162,7 +158,8 @@
 
   @media (max-width: 860px) {
     .hero { grid-template-columns: 1fr; gap: 36px; padding-top: 48px; }
-    .ring-box { order: -1; }
+    .device { order: -1; }
+    .device img { max-width: 300px; }
     .trip { grid-template-columns: 1fr; gap: 0; }
     .trip li { border-top: 0; border-left: 3px solid var(--rule); padding: 0 0 26px 24px; }
     .trip li::before { top: 4px; left: -8px; }
@@ -170,23 +167,19 @@
   }
   @media (max-width: 420px) {
     .wrap { padding: 0 16px; }
-    .ring { --size: 200px; }
-    .led { transform: rotate(calc(var(--i) * 360deg / 7)) translateY(-76px); }
   }
 </style>
 </head>
 <body>
 <main>
   <div class="wrap hero">
-    <div class="ring-box" aria-hidden="true">
-      <div class="ring" id="ring">
-        <span class="led" style="--i:0"></span><span class="led" style="--i:1"></span>
-        <span class="led" style="--i:2"></span><span class="led" style="--i:3"></span>
-        <span class="led" style="--i:4"></span><span class="led" style="--i:5"></span>
-        <span class="led" style="--i:6"></span>
-      </div>
-      <div class="state" id="state"><b>speaking</b> · about 5 s after you let go</div>
-    </div>
+    <figure class="device" id="device">
+      <picture>
+        <source srcset="/hero.webp" type="image/webp">
+        <img src="/hero.png" width="760" height="735" alt="Illustration of the board: a frosted acrylic lid over a blue circuit board, on a black cylindrical speaker base">
+      </picture>
+      <figcaption class="state" id="state" aria-live="off"><b>speaking</b> · about 5 s after you let go</figcaption>
+    </figure>
 
     <div>
       <p class="eyebrow">smart-esp32 · ESP32-S3 + Netlify</p>
@@ -245,7 +238,10 @@
         <div class="card">
           <h3>The board</h3>
           <p class="path">firmware/ · C++, PlatformIO</p>
-          <img src="/device.jpg" width="679" height="491" alt="The ESP32-S3 speaker board in its frosted enclosure, next to its separate speaker module">
+          <picture>
+            <source srcset="/device.webp" type="image/webp">
+            <img src="/device.png" width="678" height="489" alt="The ESP32-S3 speaker board in its frosted enclosure, next to its separate speaker module">
+          </picture>
           <ul>
             <li>ESP32-S3, 16 MB flash, 8 MB PSRAM, Wi-Fi</li>
             <li>ES7210 dual-mic input, ES8311 codec and speaker amp</li>
@@ -297,12 +293,11 @@
 </footer>
 
 <script>
-  // The ring on the real board: red while you hold K2, blue while Netlify works, green while it speaks.
+  // The LED ring on the real board: red while you hold K2, blue while Netlify works, green while it speaks.
   (function () {
-    var ring = document.getElementById("ring");
+    var device = document.getElementById("device");
     var state = document.getElementById("state");
-    if (!ring || !state) return;
-    var leds = ring.querySelectorAll(".led");
+    if (!device || !state) return;
     var phases = [
       { color: "--led-listen", label: "<b>listening</b> · K2 held", ms: 2600 },
       { color: "--led-think", label: "<b>thinking</b> · Netlify is answering", ms: 2400 },
@@ -310,9 +305,7 @@
       { color: null, label: "idle · hold K2 to ask", ms: 1400 }
     ];
     function show(p) {
-      var c = p.color ? "var(" + p.color + ")" : "";
-      leds.forEach(function (led) { led.style.setProperty("--c", c); });
-      ring.style.setProperty("--ring-glow", c || "transparent");
+      device.style.setProperty("--glow", p.color ? "var(" + p.color + ")" : "transparent");
       state.innerHTML = p.label;
     }
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { show(phases[2]); return; }
