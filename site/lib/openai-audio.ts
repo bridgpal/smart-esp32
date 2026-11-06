@@ -11,7 +11,9 @@ import { SpeechError } from "./openai-speech.ts";
 const CANDIDATE_MODELS = ["gpt-audio-mini", "gpt-audio", "gpt-4o-mini-audio-preview", "gpt-4o-audio-preview"];
 
 const AUDIO_SYSTEM = `${SYSTEM}
-The user's question arrives as audio. Answer it out loud.`;
+The user's question arrives as audio. Answer it out loud, in English unless they clearly spoke
+another language. If the audio has no clear speech (silence, noise, or a fragment), do not guess a
+question: say only "Sorry, I didn't catch that."`;
 
 let client: OpenAI | null = null;
 function openai(): OpenAI {

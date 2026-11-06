@@ -49,7 +49,12 @@ void onKeyPress(uint8_t key) {
 } // namespace
 
 void setup() {
+  Serial.setTxBufferSize(4096);
   Serial.begin(115200);
+  // Never block on serial output. With USB-Serial/JTAG, if nothing on the computer is reading the
+  // port the TX buffer fills and each write waits up to 100 ms (per character on some paths), which
+  // stalled push-to-talk for seconds. Console commands raise it while they run (see console.cpp).
+  Serial.setTxTimeoutMs(0);
   uint32_t start = millis();
   while (!Serial && millis() - start < 1500) delay(10); // give the USB console a moment
 

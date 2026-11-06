@@ -280,6 +280,12 @@ void cmdGet(String rest) {
 void run(String line) {
   line.trim();
   if (!line.length()) return;
+  // A command means a host is reading the port, so let replies wait for the buffer to drain
+  // instead of being dropped (output is non-blocking otherwise; see main.cpp).
+  Serial.setTxTimeoutMs(100);
+  struct RestoreTimeout {
+    ~RestoreTimeout() { Serial.setTxTimeoutMs(0); }
+  } restore;
   String rest = line;
   String cmd = nextToken(rest);
   cmd.toLowerCase();
