@@ -20,7 +20,7 @@ constexpr uint16_t EXIO_OUTPUT_MASK = (1u << EXIO_LCD_RST) | (1u << EXIO_TP_RST)
 // Initial levels: LCD/touch out of reset, camera powered down, amp off.
 constexpr uint16_t EXIO_INITIAL = (1u << EXIO_LCD_RST) | (1u << EXIO_TP_RST) | (1u << EXIO_CAM_PWDN);
 
-Adafruit_NeoPixel ring(RGB_COUNT, PIN_RGB, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel ring(RGB_COUNT, PIN_RGB, NEO_RGB + NEO_KHZ800);
 bool s_expanderOk = false;
 uint16_t s_outputs = EXIO_INITIAL;
 uint8_t s_stable = 0, s_lastRaw = 0;

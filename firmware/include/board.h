@@ -22,7 +22,7 @@
 #define PIN_I2S_DOUT 16 // ESP32 -> ES8311 (speaker)
 #define PIN_I2S_DIN 15  // ES7210 -> ESP32 (mics)
 
-// --- RGB ring ---
+// --- RGB ring (WS2812-type, RGB byte order, not the usual GRB; verified on this unit) ---
 #define PIN_RGB 38
 #define RGB_COUNT 7
 
