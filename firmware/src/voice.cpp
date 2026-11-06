@@ -1,13 +1,14 @@
 #include "voice.h"
 
 #include "audio.h"
+#include "diag.h"
 #include "hw.h"
 #include "net.h"
 
 namespace voice {
 
 namespace {
-// Parses the /api/device/talk-stream frames ([type][u32 LE length][payload]) as they arrive and
+// Parses the talk-stream / talk-audio frames ([type][u32 LE length][payload]) as they arrive and
 // plays audio frames immediately, after a short prebuffer to ride out network jitter.
 class FramePlayer : public Stream {
 public:
@@ -20,7 +21,7 @@ public:
       lastCheck_ = millis();
       if (interrupt_()) {
         interrupted_ = true;
-        Serial.printf("EVT talk: interrupted (%lu ms)\n", (unsigned long)(millis() - t0_));
+        diag::evt("talk: interrupted (%lu ms)", (unsigned long)(millis() - t0_));
         audio::endPlayback();
         return 0; // makes HTTPClient::writeToStream stop reading
       }
@@ -68,9 +69,10 @@ private:
   void endFrame() {
     hdrLen_ = 0;
     switch (type_) {
-    case 'T': Serial.printf("EVT talk: heard \"%s\" (%lu ms)\n", text_.c_str(), (unsigned long)(millis() - t0_)); break;
-    case 'R': Serial.printf("EVT talk: reply \"%s\" (%lu ms)\n", text_.c_str(), (unsigned long)(millis() - t0_)); break;
-    case 'E': Serial.printf("EVT talk: server error %s\n", text_.c_str()); error_ = true; break;
+    case 'T': diag::evt("talk: heard \"%s\" (%lu ms)", text_.c_str(), (unsigned long)(millis() - t0_)); break;
+    case 'R': diag::evt("talk: reply \"%s\" (%lu ms)", text_.c_str(), (unsigned long)(millis() - t0_)); break;
+    case 'E': diag::evt("talk: server error %s", text_.c_str()); error_ = true; break;
+    case 'M': diag::evt("talk: model %s", text_.c_str()); break;
     case 'Z': ended_ = true; break;
     default: break;
     }
@@ -92,7 +94,7 @@ private:
   void start() {
     playing_ = true;
     hw::setAll(0, 60, 0); // green: speaking
-    Serial.printf("EVT talk: speaking (%lu ms)\n", (unsigned long)(millis() - t0_));
+    diag::evt("talk: speaking (%lu ms)", (unsigned long)(millis() - t0_));
     audio::beginPlayback();
     audio::writePcm(prebuf_, prebufLen_);
   }
@@ -116,36 +118,41 @@ bool s_interrupted = false;
 
 bool interrupted() { return s_interrupted; }
 
-bool talk(const std::function<bool()> &keepGoing, const std::function<bool()> &interrupt) {
+bool talk(const std::function<bool()> &keepGoing, const std::function<bool()> &interrupt, const char *path) {
   s_interrupted = false;
   if (!audio::ok()) {
-    Serial.println("EVT talk: audio not initialised");
+    diag::evt("talk: audio not initialised");
     return false;
   }
   const size_t maxBytes = MAX_RECORD_SECONDS * audio::SAMPLE_RATE * 2;
   uint8_t *rec = (uint8_t *)ps_malloc(maxBytes);
   if (!rec) {
-    Serial.println("EVT talk: out of PSRAM");
+    diag::evt("talk: out of PSRAM");
     return false;
   }
 
   hw::setAll(60, 0, 0); // red: listening
-  Serial.println("EVT talk: listening");
+  diag::evt("talk: listening");
   float rmsL = 0, rmsR = 0;
+  uint32_t failsBefore = hw::keyReadFailures();
   size_t len = audio::record(rec, maxBytes, keepGoing, &rmsL, &rmsR);
-  Serial.printf("EVT talk: recorded %.1f s (mic rms L=%.0f R=%.0f)\n", len / 2.0f / audio::SAMPLE_RATE, rmsL, rmsR);
+  diag::evt("talk: recorded %.1f s, ended by %s (mic rms L=%.0f R=%.0f, key read failures %lu)",
+            len / 2.0f / audio::SAMPLE_RATE, len >= maxBytes ? "time limit" : "button release", rmsL, rmsR,
+            (unsigned long)(hw::keyReadFailures() - failsBefore));
 
   if (len < audio::SAMPLE_RATE * 2 / 2) { // under half a second: treat as an accidental tap
     free(rec);
     hw::setAll(0, 0, 0);
-    Serial.println("EVT talk: too short, ignored");
+    diag::evt("talk: too short, ignored");
     return false;
   }
 
   hw::setAll(0, 0, 60); // blue: thinking
   uint32_t t1 = millis();
   FramePlayer *player = new FramePlayer(t1, interrupt); // ~8 KB prebuffer; keep it off the loop task's stack
-  net::Response res = net::apiStream("POST", "/api/device/talk-stream", rec, len, "application/octet-stream", *player);
+  String route = path ? String(path) : net::config().voicePath;
+  diag::evt("talk: sending to %s", route.c_str());
+  net::Response res = net::apiStream("POST", route, rec, len, "application/octet-stream", *player);
   free(rec);
   player->finish();
   hw::setAll(0, 0, 0);
@@ -156,11 +163,11 @@ bool talk(const std::function<bool()> &keepGoing, const std::function<bool()> &i
     return false;
   }
   bool ok = res.status == 200 && player->gotEnd() && !player->hadError();
-  Serial.printf("EVT talk: %s status=%d, first audio %lu ms after release, %.1f s of reply, done at %lu ms%s%s\n",
+  diag::evt("talk: %s status=%d, first audio %lu ms after release, %.1f s of reply, done at %lu ms%s%s",
                 ok ? "done" : "FAILED", res.status, (unsigned long)player->firstAudioMs(),
                 player->audioBytes() / 2.0f / audio::SAMPLE_RATE, (unsigned long)(millis() - t1),
                 res.error.length() ? " error=" : "", res.error.c_str());
-  if (res.body.length()) Serial.printf("EVT talk: %s\n", res.body.substring(0, 300).c_str());
+  if (res.body.length()) diag::evt("talk: %s", res.body.substring(0, 300).c_str());
   delete player;
   if (!ok) {
     hw::setAll(60, 0, 0);

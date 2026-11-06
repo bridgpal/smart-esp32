@@ -9,9 +9,10 @@ struct Config {
   String wifiPass;
   String apiBase;  // e.g. https://smart-esp32.netlify.app (no trailing slash)
   String apiToken; // sent as Authorization: Bearer <token>
+  String voicePath; // push-to-talk route: /api/device/talk-audio (one call) or /api/device/talk-stream
 };
 
-// Keys accepted by `config set`: wifi.ssid, wifi.pass, api.base, api.token
+// Keys accepted by `config set`: wifi.ssid, wifi.pass, api.base, api.token, voice.path
 Config &config();
 void loadConfig();
 bool setConfig(const String &key, const String &value);

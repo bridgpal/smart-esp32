@@ -5,6 +5,7 @@
 #include <esp_chip_info.h>
 
 #include "audio.h"
+#include "diag.h"
 #include "hw.h"
 #include "net.h"
 #include "voice.h"
@@ -50,7 +51,7 @@ void cmdHelp() {
       "  amp on|off                speaker power amp (EXIO8)\n"
       "  wifi                      status;  wifi scan  lists networks\n"
       "  config show | set <key> <value> | clear\n"
-      "                            keys: wifi.ssid wifi.pass api.base api.token\n"
+      "                            keys: wifi.ssid wifi.pass api.base api.token voice.path\n"
       "  ping                      GET  {api.base}/api/device/ping\n"
       "  event <type> [key]        POST {api.base}/api/device/event\n"
       "  get <https-url>           HTTPS GET any URL\n"
@@ -59,7 +60,8 @@ void cmdHelp() {
       "  rec [seconds]             record from the mics, print levels (default 3 s)\n"
       "  playback                  play the last `rec` recording\n"
       "  say <text>                TTS via {api.base}/api/device/say and play it\n"
-      "  talk [seconds]            record, then streamed voice round trip via /api/device/talk-stream\n"
+      "  talk [seconds] [path]     record, then voice round trip via voice.path (or the given route)\n"
+      "  log                       dump the in-memory event log (button changes, talk outcomes)\n"
       "  reboot\n");
   ok();
 }
@@ -153,6 +155,7 @@ void cmdConfig(String rest) {
     Serial.printf("wifi.pass = %s\n", mask(c.wifiPass).c_str());
     Serial.printf("api.base  = %s\n", c.apiBase.length() ? c.apiBase.c_str() : "(unset)");
     Serial.printf("api.token = %s\n", mask(c.apiToken).c_str());
+    Serial.printf("voice.path = %s\n", c.voicePath.c_str());
     return ok();
   }
   if (sub == "clear") {
@@ -258,8 +261,11 @@ void cmdPlayback() {
 void cmdTalk(String rest) {
   String a = nextToken(rest);
   float secs = a.length() ? a.toFloat() : 4;
+  String path = nextToken(rest); // optional route override, e.g. /api/device/talk-stream
   uint32_t until = millis() + (uint32_t)(secs * 1000);
-  voice::talk([until] { return (int32_t)(millis() - until) < 0; }) ? ok() : err("talk failed");
+  voice::talk([until] { return (int32_t)(millis() - until) < 0; }, nullptr, path.length() ? path.c_str() : nullptr)
+      ? ok()
+      : err("talk failed");
 }
 
 void cmdGet(String rest) {
@@ -294,6 +300,10 @@ void run(String line) {
   else if (cmd == "playback") cmdPlayback();
   else if (cmd == "say") cmdSay(rest);
   else if (cmd == "talk") cmdTalk(rest);
+  else if (cmd == "log") {
+    diag::dump();
+    ok();
+  }
   else if (cmd == "reboot") {
     ok();
     Serial.flush();

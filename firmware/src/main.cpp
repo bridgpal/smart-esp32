@@ -8,6 +8,7 @@
 #include <WiFi.h>
 
 #include "audio.h"
+#include "diag.h"
 #include "console.h"
 #include "hw.h"
 #include "net.h"
@@ -17,7 +18,7 @@ namespace {
 bool s_wasConnected = false;
 
 void onKeyPress(uint8_t key) {
-  Serial.printf("EVT key %s\n", hw::keyName(key));
+  diag::evt("key %s", hw::keyName(key));
   hw::setAll(0, 0, 40);
   if (!net::connected() || !net::config().apiBase.length()) {
     delay(80);
@@ -33,7 +34,7 @@ void onKeyPress(uint8_t key) {
   serializeJson(doc, body);
 
   net::Response r = net::api("POST", "/api/device/event", body);
-  Serial.printf("EVT api status=%d %s\n", r.status, r.error.c_str());
+  diag::evt("api status=%d %s", r.status, r.error.c_str());
 
   JsonDocument reply;
   if (r.ok() && !deserializeJson(reply, r.body) && reply["led"].is<JsonArrayConst>()) {
@@ -58,7 +59,7 @@ void setup() {
   net::loadConfig();
   net::begin();
 
-  Serial.printf("\nsmart-esp32 %s on %s, expander %s, audio %s. Hold K3 to talk. Type 'help'.\n", FW_VERSION,
+  Serial.printf("\nsmart-esp32 %s on %s, expander %s, audio %s. Hold K1 (rightmost) to talk. Type 'help'.\n", FW_VERSION,
                 net::deviceId().c_str(), hwOk ? "ok" : "MISSING", audioOk ? "ok" : "FAILED");
 }
 
@@ -68,11 +69,11 @@ void loop() {
   uint8_t pressed = hw::pollKeyPresses();
   for (uint8_t k = 0; k < hw::KEY_COUNT; k++) {
     if (!(pressed & (1 << k))) continue;
-    if (k == hw::KEY_11) { // K3: hold to talk; pressing it during a reply interrupts and listens again
-      Serial.println("EVT key K3 (talk)");
-      auto talkDown = [] { return (bool)((hw::readKeys() >> hw::KEY_11) & 1); };
+    if (k == hw::KEY_9) { // K1 (rightmost): hold to talk; pressing it during a reply interrupts and listens again
+      diag::evt("key K1 (talk)");
+      auto talkDown = [] { return (bool)((hw::readKeys() >> hw::KEY_9) & 1); };
       while (!voice::talk(talkDown, talkDown) && voice::interrupted() && talkDown()) {
-        Serial.println("EVT key K3 (talk again)");
+        diag::evt("key K1 (talk again)");
       }
       hw::resyncKeys();
     } else {
@@ -83,8 +84,8 @@ void loop() {
   bool now = net::connected();
   if (now != s_wasConnected) {
     s_wasConnected = now;
-    if (now) Serial.printf("EVT wifi up %s\n", WiFi.localIP().toString().c_str());
-    else Serial.println("EVT wifi down");
+    if (now) diag::evt("wifi up %s", WiFi.localIP().toString().c_str());
+    else diag::evt("wifi down");
   }
   delay(5);
 }

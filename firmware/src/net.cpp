@@ -37,13 +37,14 @@ const KeyMap KEYS[] = {
     {"wifi.pass", "wifi_pass", &Config::wifiPass},
     {"api.base", "api_base", &Config::apiBase},
     {"api.token", "api_token", &Config::apiToken},
+    {"voice.path", "voice_path", &Config::voicePath},
 };
 } // namespace
 
 Config &config() { return s_cfg; }
 
 void loadConfig() {
-  s_cfg = {WIFI_SSID, WIFI_PASS, API_BASE, API_TOKEN};
+  s_cfg = {WIFI_SSID, WIFI_PASS, API_BASE, API_TOKEN, "/api/device/talk-audio"};
   Preferences p;
   if (!p.begin(NS, false)) return; // read-write so the namespace is created on first boot
   for (const auto &k : KEYS) {

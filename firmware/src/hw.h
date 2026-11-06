@@ -21,6 +21,7 @@ bool setAmp(bool on);
 enum Key : uint8_t { KEY_9 = 0, KEY_10 = 1, KEY_11 = 2, KEY_BOOT = 3, KEY_COUNT = 4 };
 const char *keyName(uint8_t key);
 uint8_t readKeys();
+uint32_t keyReadFailures(); // expander I2C reads that failed since boot
 // Debounced edge detection; call often. Returns bitmask of keys newly pressed since last call.
 uint8_t pollKeyPresses();
 // Re-read the keys and treat their current state as already seen (call after a long blocking

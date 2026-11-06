@@ -4,6 +4,7 @@
 #include <Wire.h>
 
 #include "board.h"
+#include "diag.h"
 
 namespace hw {
 
@@ -92,10 +93,16 @@ const char *keyName(uint8_t key) {
   }
 }
 
+uint32_t s_keyReadFailures = 0;
+uint32_t keyReadFailures() { return s_keyReadFailures; }
+
 uint8_t readKeys() {
   uint8_t pressed = 0;
   uint16_t levels;
-  if (s_expanderOk && expanderReadAll(levels)) {
+  bool read = s_expanderOk && expanderReadAll(levels);
+  if (s_expanderOk && !read && (s_keyReadFailures++ % 20) == 0)
+    diag::log("keys: expander read failed (%lu so far)", (unsigned long)s_keyReadFailures);
+  if (read) {
     if (!(levels & (1u << EXIO_KEY_9))) pressed |= 1 << KEY_9;
     if (!(levels & (1u << EXIO_KEY_10))) pressed |= 1 << KEY_10;
     if (!(levels & (1u << EXIO_KEY_11))) pressed |= 1 << KEY_11;
@@ -108,6 +115,7 @@ uint8_t pollKeyPresses() {
   uint8_t raw = readKeys();
   uint32_t now = millis();
   if (raw != s_lastRaw) {
+    diag::log("keys raw %02x -> %02x (stable %02x)", s_lastRaw, raw, s_stable);
     s_lastRaw = raw;
     s_lastChange = now;
     return 0;
